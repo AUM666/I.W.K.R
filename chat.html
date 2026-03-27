@@ -1,8 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>チャット</title>
+</head>
+<body>
+
+<h2>チャットページ</h2>
+
+<p id="welcome"></p>
+
+<input id="msg" placeholder="メッセージ">
+<button onclick="send()">送信</button>
+
+<div id="chat"></div>
+
+<!-- Firebase読み込み -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
 
 <script>
-// 🔥 ここにFirebaseの設定を貼る
 const firebaseConfig = {
   apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
   authDomain: "aumkyou.firebaseapp.com",
@@ -10,12 +27,16 @@ const firebaseConfig = {
   projectId: "aumkyou"
 };
 
-// 初期化
 const app = firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 // 名前取得
 let name = localStorage.getItem("username");
+
+// 名前チェック
+if (!name) {
+  name = "名無し";
+}
 
 // 表示
 document.getElementById("welcome").innerText = "ようこそ " + name + " さん";
@@ -24,13 +45,17 @@ document.getElementById("welcome").innerText = "ようこそ " + name + " さん
 function send() {
   let text = document.getElementById("msg").value;
 
+  if (text === "") return;
+
   db.ref("chat").push({
     name: name,
     message: text
   });
+
+  document.getElementById("msg").value = "";
 }
 
-// 受信（リアルタイム）
+// 受信
 db.ref("chat").on("child_added", function(data) {
   let msg = data.val();
   let chat = document.getElementById("chat");
