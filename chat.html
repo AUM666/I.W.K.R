@@ -15,9 +15,9 @@
 
 <div id="chat"></div>
 
-<!-- Firebase読み込み -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
+<!-- Firebase（古い安定版） -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
 const firebaseConfig = {
@@ -27,24 +27,15 @@ const firebaseConfig = {
   projectId: "aumkyou"
 };
 
-const app = firebase.initializeApp(firebaseConfig);
+firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-// 名前取得
-let name = localStorage.getItem("username");
+let name = localStorage.getItem("username") || "名無し";
 
-// 名前チェック
-if (!name) {
-  name = "名無し";
-}
-
-// 表示
 document.getElementById("welcome").innerText = "ようこそ " + name + " さん";
 
-// 送信
 function send() {
   let text = document.getElementById("msg").value;
-
   if (text === "") return;
 
   db.ref("chat").push({
@@ -55,7 +46,6 @@ function send() {
   document.getElementById("msg").value = "";
 }
 
-// 受信
 db.ref("chat").on("child_added", function(data) {
   let msg = data.val();
   let chat = document.getElementById("chat");
