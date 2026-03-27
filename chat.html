@@ -59,11 +59,7 @@ function send() {
   document.getElementById("msg").value = "";
 }
 
-db.ref("chat").on("child_added", function(data) {
-  let msg = data.val();
-  let chat = document.getElementById("chat");
-
-  chat.innerHTML += "<p><b>" + msg.name + ":</b> " + msg.message + "</p>";
+  chat.innerHTML += "<p><b>" + msg.name + "</b> [" + msg.time + "] : " + msg.message + "</p>";
 });
 </script>
 
