@@ -38,6 +38,19 @@ function send() {
   let text = document.getElementById("msg").value;
   if (text === "") return;
 
+  // 👇 ここに追加
+  let now = new Date();
+  let time = now.getHours() + ":" + now.getMinutes();
+
+  db.ref("chat").push({
+    name: name,
+    message: text,
+    time: time // ← 追加
+  });
+
+  document.getElementById("msg").value = "";
+}
+
   db.ref("chat").push({
     name: name,
     message: text
