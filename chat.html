@@ -1,0 +1,43 @@
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
+
+<script>
+// 🔥 ここにFirebaseの設定を貼る
+const firebaseConfig = {
+  apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
+  authDomain: "aumkyou.firebaseapp.com",
+  databaseURL: "https://aumkyou-default-rtdb.firebaseio.com/",
+  projectId: "aumkyou"
+};
+
+// 初期化
+const app = firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// 名前取得
+let name = localStorage.getItem("username");
+
+// 表示
+document.getElementById("welcome").innerText = "ようこそ " + name + " さん";
+
+// 送信
+function send() {
+  let text = document.getElementById("msg").value;
+
+  db.ref("chat").push({
+    name: name,
+    message: text
+  });
+}
+
+// 受信（リアルタイム）
+db.ref("chat").on("child_added", function(data) {
+  let msg = data.val();
+  let chat = document.getElementById("chat");
+
+  chat.innerHTML += "<p><b>" + msg.name + ":</b> " + msg.message + "</p>";
+});
+</script>
+
+</body>
+</html>
