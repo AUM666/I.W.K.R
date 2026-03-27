@@ -15,7 +15,7 @@
 
 <div id="chat"></div>
 
-<!-- Firebase（古い安定版） -->
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -34,30 +34,27 @@ let name = localStorage.getItem("username") || "名無し";
 
 document.getElementById("welcome").innerText = "ようこそ " + name + " さん";
 
+// 🔥 送信
 function send() {
   let text = document.getElementById("msg").value;
   if (text === "") return;
 
-  // 👇 ここに追加
   let now = new Date();
-  let time = now.getHours() + ":" + now.getMinutes();
+  let time = now.getHours() + ":" + String(now.getMinutes()).padStart(2, "0");
 
   db.ref("chat").push({
     name: name,
     message: text,
-    time: time // ← 追加
+    time: time
   });
 
   document.getElementById("msg").value = "";
 }
 
-  db.ref("chat").push({
-    name: name,
-    message: text
-  });
-
-  document.getElementById("msg").value = "";
-}
+// 🔥 受信（これが抜けてた）
+db.ref("chat").on("child_added", function(data) {
+  let msg = data.val();
+  let chat = document.getElementById("chat");
 
   chat.innerHTML += "<p><b>" + msg.name + "</b> [" + msg.time + "] : " + msg.message + "</p>";
 });
