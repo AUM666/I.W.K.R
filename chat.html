@@ -8,6 +8,8 @@
 
 <h2>チャットページ</h2>
 <p id="status"></p>
+<button id="logoutBtn">ログアウト</button>
+<br><br>
 
 <label>
   <input type="checkbox" id="toggleSystemMsg">
@@ -97,6 +99,18 @@ auth.onAuthStateChanged(user => {
       });
     });
   }
+});
+
+// ログアウトボタン
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  if (!currentUser) return;
+  auth.signOut().then(() => {
+    alert("ログアウトしました");
+    window.location.href = "index.html";
+  }).catch(err => {
+    console.error(err);
+    alert("ログアウトに失敗しました");
+  });
 });
 
 // メッセージ送信
