@@ -27,7 +27,6 @@
     </div>
 
     <input id="msg">
-    <input type="file" id="imageInput" accept="image/png, image/jpeg">
     <button onclick="send()">送信</button>
 
     <div id="chat"></div>
@@ -44,21 +43,17 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
 
 <script>
 const firebaseConfig = {
   apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
   authDomain: "aumkyou.firebaseapp.com",
   databaseURL: "https://aumkyou-default-rtdb.firebaseio.com",
-  projectId: "aumkyou",
-  storageBucket: "aumkyou.appspot.com"
+  projectId: "aumkyou"
 };
 firebase.initializeApp(firebaseConfig);
-
 const db = firebase.database();
 const auth = firebase.auth();
-const storage = firebase.storage();
 
 // ===== 設定 =====
 let showSystemMsg = localStorage.getItem("showSystemMsg") !== "false";
@@ -107,6 +102,7 @@ auth.onAuthStateChanged(user => {
     document.getElementById("status").innerText =
       `${name} [${fixedID}]`;
 
+    // 入室メッセージ
     db.ref("chat").push({
       uid: "system",
       name: "システム",
@@ -114,13 +110,18 @@ auth.onAuthStateChanged(user => {
       time: new Date().toLocaleString()
     });
 
+    // ===== オンライン（修正済み）=====
     const onlineRef = db.ref("onlineUsers/" + user.uid);
     const connectedRef = db.ref(".info/connected");
 
     connectedRef.on("value", snap => {
       if (snap.val() === true) {
         onlineRef.onDisconnect().remove();
-        onlineRef.set({ name: name, id: fixedID });
+
+        onlineRef.set({
+          name: name,
+          id: fixedID
+        });
       }
     });
   });
@@ -129,6 +130,7 @@ auth.onAuthStateChanged(user => {
 // ===== ログアウト =====
 document.getElementById("logoutBtn").onclick = () => {
   if (!currentUser) return;
+
   db.ref("onlineUsers/" + currentUser.uid).remove();
   auth.signOut();
   location.href = "index.html";
@@ -146,32 +148,19 @@ function cancelReply() {
   document.getElementById("replyBox").style.display = "none";
 }
 
-// ===== 送信（画像対応）=====
-async function send() {
+// ===== 送信 =====
+function send() {
   if (!currentUser) return;
 
   const text = document.getElementById("msg").value;
-  const file = document.getElementById("imageInput").files[0];
-
-  if (!text && !file) return;
+  if (!text) return;
 
   const name = localStorage.getItem("displayName") || currentUser.email;
-
-  let imageUrl = null;
-
-  // 画像アップロード
-  if (file) {
-    const filePath = "images/" + Date.now() + "_" + file.name;
-    const storageRef = storage.ref(filePath);
-    await storageRef.put(file);
-    imageUrl = await storageRef.getDownloadURL();
-  }
 
   db.ref("chat").push({
     uid: currentUser.uid,
     name: `${name} [${fixedID}]`,
-    message: text || "",
-    image: imageUrl,
+    message: text,
     time: new Date().toLocaleString(),
     reply: replyTo ? {
       name: replyTo.name,
@@ -180,7 +169,6 @@ async function send() {
   });
 
   document.getElementById("msg").value = "";
-  document.getElementById("imageInput").value = "";
   cancelReply();
 }
 
@@ -199,7 +187,7 @@ db.ref("chat").on("child_added", data => {
   } else if (msg.uid === "system") {
     div.style.background = "#ffeebb";
     div.classList.add("systemMsg");
-    if (!showSystemMsg) div.style.display = "none";
+    if (!showSystemMsg) div.style.display = "none"; // ← 修正
   } else {
     div.style.background = "#f0f0f0";
   }
@@ -214,13 +202,16 @@ db.ref("chat").on("child_added", data => {
 
   const btnArea = document.createElement("div");
 
+  // 返信
   if (msg.uid !== "system") {
     const replyBtn = document.createElement("button");
     replyBtn.innerText = "返信";
+    replyBtn.style.marginRight = "10px";
     replyBtn.onclick = () => setReply(msg);
     btnArea.appendChild(replyBtn);
   }
 
+  // 削除
   if (msg.uid === currentUser?.uid) {
     const delBtn = document.createElement("button");
     delBtn.innerText = "削除";
@@ -244,21 +235,9 @@ db.ref("chat").on("child_added", data => {
     body.appendChild(r);
   }
 
-  if (msg.message) {
-    const text = document.createElement("div");
-    text.innerText = msg.message;
-    body.appendChild(text);
-  }
-
-  // ===== 画像表示 =====
-  if (msg.image) {
-    const img = document.createElement("img");
-    img.src = msg.image;
-    img.style.maxWidth = "200px";
-    img.style.display = "block";
-    img.style.marginTop = "5px";
-    body.appendChild(img);
-  }
+  const text = document.createElement("div");
+  text.innerText = msg.message;
+  body.appendChild(text);
 
   div.appendChild(header);
   div.appendChild(body);
@@ -270,7 +249,7 @@ db.ref("chat").on("child_added", data => {
   document.getElementById("chat").prepend(div);
 });
 
-// ===== オンライン表示 =====
+// ===== オンライン表示（修正済み）=====
 const onlineDiv = document.getElementById("onlineUsers");
 const onlineCount = document.getElementById("onlineCount");
 
