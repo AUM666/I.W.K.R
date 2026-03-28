@@ -1,38 +1,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>チャット</title>
+<meta charset="UTF-8">
+<title>チャット</title>
+
+<style>
+body {
+  font-family: monospace;
+  background: #f5f5f5;
+}
+
+.msg {
+  margin: 5px;
+  padding: 5px;
+  border-bottom: 1px solid #ccc;
+}
+
+.me {
+  background: #d0ebff;
+}
+
+button {
+  margin-left: 10px;
+}
+</style>
+
 </head>
 <body>
 
-<h2>チャットページ</h2>
+<h2>2ch風チャット</h2>
 
 <p id="welcome"></p>
 
-<input id="msg" placeholder="メッセージ">
+<input id="msg">
 <button onclick="send()">送信</button>
 
 <div id="chat"></div>
 
-<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
 const firebaseConfig = {
-  apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
-  authDomain: "aumkyou.firebaseapp.com",
-  databaseURL: "https://aumkyou-default-rtdb.firebaseio.com",
-  projectId: "aumkyou"
+  apiKey: "YOUR_KEY",
+  authDomain: "YOUR_DOMAIN",
+  databaseURL: "YOUR_URL",
+  projectId: "YOUR_ID"
 };
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-let name = localStorage.getItem("username") || "名無し";
+let name = localStorage.getItem("username");
+let birth = localStorage.getItem("birth");
 
-document.getElementById("welcome").innerText = "ようこそ " + name + " さん";
+document.getElementById("welcome").innerText =
+  name + "（" + birth + "）";
 
 // 🔥 送信
 function send() {
@@ -40,23 +63,50 @@ function send() {
   if (text === "") return;
 
   let now = new Date();
-  let time = now.getHours() + ":" + String(now.getMinutes()).padStart(2, "0");
+  let time = now.toLocaleString();
 
   db.ref("chat").push({
     name: name,
     message: text,
-    time: time
+    time: time,
+    birth: birth
   });
 
   document.getElementById("msg").value = "";
 }
 
-// 🔥 受信（これが抜けてた）
+// 🔥 受信（最新が上）
 db.ref("chat").on("child_added", function(data) {
   let msg = data.val();
+  let key = data.key;
   let chat = document.getElementById("chat");
 
-  chat.innerHTML += "<p><b>" + msg.name + "</b> [" + msg.time + "] : " + msg.message + "</p>";
+  let div = document.createElement("div");
+
+  // 自分なら色変える
+  if(msg.name === name){
+    div.className = "msg me";
+  } else {
+    div.className = "msg";
+  }
+
+  div.innerHTML =
+    "<b>" + msg.name + "</b> (" + msg.birth + ") [" + msg.time + "]<br>" +
+    msg.message;
+
+  // 自分のメッセージ削除ボタン
+  if(msg.name === name){
+    let btn = document.createElement("button");
+    btn.innerText = "削除";
+    btn.onclick = function(){
+      db.ref("chat/" + key).remove();
+      div.remove();
+    };
+    div.appendChild(btn);
+  }
+
+  // 🔥 上に追加（これが重要）
+  chat.prepend(div);
 });
 </script>
 
