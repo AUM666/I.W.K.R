@@ -10,7 +10,7 @@
 <p id="status"></p>
 
 <input id="msg" placeholder="メッセージ">
-<input type="file" id="fileInput" accept="image/*,video/*">
+<input type="file" id="fileInput" accept="image/png,video/mp4">
 <button onclick="send()">送信</button>
 
 <div id="chat"></div>
@@ -47,27 +47,20 @@ auth.onAuthStateChanged(user => {
   }
 });
 
-// 画像・動画を半分サイズにしてBlob化する関数
-function resizeFile(file, callback) {
-  if (file.type.startsWith("image/")) {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = e => {
-      img.src = e.target.result;
-    };
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width / 2;
-      canvas.height = img.height / 2;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(blob => callback(blob, file.type));
-    };
-    reader.readAsDataURL(file);
-  } else if (file.type.startsWith("video/")) {
-    // 動画はBlobそのまま使う（リサイズは複雑なため簡易）
-    callback(file, file.type);
-  }
+// 画像を半分サイズに縮小してPNGとしてBlob化する関数
+function resizePNG(file, callback) {
+  const img = new Image();
+  const reader = new FileReader();
+  reader.onload = e => { img.src = e.target.result; };
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width / 2;
+    canvas.height = img.height / 2;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(blob => callback(blob, "image/png"), "image/png");
+  };
+  reader.readAsDataURL(file);
 }
 
 // メッセージ送信
@@ -81,21 +74,15 @@ function send() {
   const time = now.toLocaleString();
 
   if (file) {
-    resizeFile(file, (resizedBlob, type) => {
-      const fileRef = storage.ref("chat_files/" + Date.now() + "_" + file.name);
-      fileRef.put(resizedBlob).then(snapshot => {
-        snapshot.ref.getDownloadURL().then(url => {
-          db.ref("chat").push({
-            uid: currentUser.uid,
-            name: name,
-            message: text || "",
-            time: time,
-            fileUrl: url,
-            fileType: type
-          });
-        });
-      }).catch(err => alert("アップロード失敗: " + err.message));
-    });
+    if (file.type === "image/png") {
+      resizePNG(file, (resizedBlob, type) => {
+        uploadFile(resizedBlob, file.name, type);
+      });
+    } else if (file.type === "video/mp4") {
+      uploadFile(file, file.name, file.type);
+    } else {
+      return alert("PNG画像かMP4動画のみ送信可能です");
+    }
   } else if (text) {
     db.ref("chat").push({
       uid: currentUser.uid,
@@ -107,6 +94,23 @@ function send() {
 
   document.getElementById("msg").value = "";
   document.getElementById("fileInput").value = "";
+}
+
+// ファイルをStorageにアップロードしてチャットに反映
+function uploadFile(blob, filename, type) {
+  const fileRef = storage.ref("chat_files/" + Date.now() + "_" + filename);
+  fileRef.put(blob).then(snapshot => {
+    snapshot.ref.getDownloadURL().then(url => {
+      db.ref("chat").push({
+        uid: currentUser.uid,
+        name: localStorage.getItem("displayName") || currentUser.email,
+        message: document.getElementById("msg").value || "",
+        time: new Date().toLocaleString(),
+        fileUrl: url,
+        fileType: type
+      });
+    });
+  }).catch(err => alert("アップロード失敗: " + err.message));
 }
 
 // 受信
@@ -129,18 +133,17 @@ db.ref("chat").on("child_added", data => {
   content += msg.message ? msg.message + "<br>" : "";
 
   if (msg.fileUrl) {
-    if (msg.fileType.startsWith("image/")) {
+    if (msg.fileType === "image/png") {
       content += `<img src="${msg.fileUrl}" style="max-width:200px; display:block; margin-top:5px;">`;
-    } else if (msg.fileType.startsWith("video/")) {
+    } else if (msg.fileType === "video/mp4") {
       content += `<video controls style="max-width:200px; display:block; margin-top:5px;">
-                    <source src="${msg.fileUrl}" type="${msg.fileType}">
+                    <source src="${msg.fileUrl}" type="video/mp4">
                   </video>`;
     }
   }
 
   div.innerHTML += content;
 
-  // 自分のメッセージ削除ボタン
   if (currentUser && msg.uid === currentUser.uid) {
     const btn = document.createElement("button");
     btn.innerText = "削除";
