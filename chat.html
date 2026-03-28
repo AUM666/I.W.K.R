@@ -6,19 +6,9 @@
 </head>
 <body>
 
-<h2>ログイン</h2>
-
-<input id="email" placeholder="メール">
-<input id="password" type="password" placeholder="パスワード">
-
-<br><br>
-<button onclick="signup()">新規登録</button>
-<button onclick="login()">ログイン</button>
-<button onclick="logout()">ログアウト</button>
+<h2>チャットページ</h2>
 
 <p id="status"></p>
-
-<hr>
 
 <input id="msg" placeholder="メッセージ">
 <button onclick="send()">送信</button>
@@ -43,35 +33,14 @@ const auth = firebase.auth();
 
 let currentUser = null;
 
-// 新規登録
-function signup(){
-  let email = document.getElementById("email").value;
-  let password = document.getElementById("password").value;
-  auth.createUserWithEmailAndPassword(email, password)
-    .catch(e => alert(e.message));
-}
-
-// ログイン
-function login(){
-  let email = document.getElementById("email").value;
-  let password = document.getElementById("password").value;
-  auth.signInWithEmailAndPassword(email, password)
-    .catch(e => alert(e.message));
-}
-
-// ログアウト
-function logout(){
-  auth.signOut();
-}
-
-// 状態監視
-auth.onAuthStateChanged(function(u){
-  if(u){
-    currentUser = u;
-    document.getElementById("status").innerText = "ログイン中: " + currentUser.email;
+// ログイン確認
+auth.onAuthStateChanged(function(user){
+  if(!user){
+    alert("ログインしてください");
+    window.location.href = "index.html";
   } else {
-    currentUser = null;
-    document.getElementById("status").innerText = "未ログイン";
+    currentUser = user;
+    document.getElementById("status").innerText = "ログイン中: " + currentUser.email;
   }
 });
 
@@ -79,11 +48,11 @@ auth.onAuthStateChanged(function(u){
 function send(){
   if(!currentUser) return alert("ログインしてください");
 
-  let text = document.getElementById("msg").value;
+  const text = document.getElementById("msg").value;
   if(text === "") return;
 
-  let now = new Date();
-  let time = now.toLocaleString();
+  const now = new Date();
+  const time = now.toLocaleString();
 
   db.ref("chat").push({
     uid: currentUser.uid,
@@ -100,20 +69,21 @@ db.ref("chat").on("child_added", function(data){
   const msg = data.val();
   const key = data.key;
 
-  let div = document.createElement("div");
+  const div = document.createElement("div");
   div.style.padding = "5px";
   div.style.margin = "3px 0";
   div.style.borderRadius = "5px";
 
-  // 自分のメッセージかどうか判定
+  // 自分のメッセージか判定
   if(currentUser && msg.uid === currentUser.uid){
-    div.style.background = "#d0ebff";
+    div.style.background = "#d0ebff"; // 自分のメッセージは水色
   } else {
-    div.style.background = "#f0f0f0";
+    div.style.background = "#f0f0f0"; // 他人はグレー
   }
 
   div.innerHTML = "<b>" + msg.name + "</b> [" + msg.time + "]<br>" + msg.message;
 
+  // 自分のメッセージだけ削除ボタン追加
   if(currentUser && msg.uid === currentUser.uid){
     const btn = document.createElement("button");
     btn.innerText = "削除";
@@ -124,7 +94,7 @@ db.ref("chat").on("child_added", function(data){
     div.appendChild(btn);
   }
 
-  document.getElementById("chat").prepend(div);
+  document.getElementById("chat").prepend(div); // 最新が上
 });
 </script>
 
