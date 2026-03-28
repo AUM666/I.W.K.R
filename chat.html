@@ -9,6 +9,12 @@
 <h2>チャットページ</h2>
 <p id="status"></p>
 
+<label>
+  <input type="checkbox" id="toggleSystemMsg" checked>
+  入室メッセージを表示
+</label>
+<br><br>
+
 <input id="msg" placeholder="メッセージ">
 <button onclick="send()">送信</button>
 
@@ -31,6 +37,12 @@ const db = firebase.database();
 const auth = firebase.auth();
 
 let currentUser = null;
+
+// 入室メッセージ表示ON/OFF
+let showSystemMsg = true;
+document.getElementById("toggleSystemMsg").addEventListener("change", e => {
+  showSystemMsg = e.target.checked;
+});
 
 // ログイン確認
 auth.onAuthStateChanged(user => {
@@ -77,6 +89,9 @@ function send() {
 db.ref("chat").on("child_added", data => {
   const msg = data.val();
   const key = data.key;
+
+  // 入室メッセージ表示OFFなら無視
+  if (msg.uid === "system" && !showSystemMsg) return;
 
   const div = document.createElement("div");
   div.style.padding = "5px";
