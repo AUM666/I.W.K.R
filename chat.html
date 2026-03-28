@@ -15,7 +15,18 @@
     <button id="logoutBtn">ログアウト</button>
     <br><br>
 
-    <input id="msg" placeholder="メッセージ">
+    <label>
+      <input type="checkbox" id="toggleSystemMsg">
+      入室メッセージを表示
+    </label>
+    <br><br>
+
+    <div id="replyBox" style="display:none; background:#eee; padding:5px;">
+      <span id="replyText"></span>
+      <button onclick="cancelReply()">×</button>
+    </div>
+
+    <input id="msg">
     <input type="file" id="imageInput" accept="image/png, image/jpeg">
     <button onclick="send()">送信</button>
 
@@ -49,8 +60,33 @@ const db = firebase.database();
 const auth = firebase.auth();
 const storage = firebase.storage();
 
+// ===== 設定 =====
+let showSystemMsg = localStorage.getItem("showSystemMsg") !== "false";
+document.getElementById("toggleSystemMsg").checked = showSystemMsg;
+
+document.getElementById("toggleSystemMsg").addEventListener("change", e => {
+  showSystemMsg = e.target.checked;
+  localStorage.setItem("showSystemMsg", showSystemMsg);
+
+  document.querySelectorAll(".systemMsg").forEach(el => {
+    el.style.display = showSystemMsg ? "block" : "none";
+  });
+});
+
+// ===== 変数 =====
 let currentUser = null;
 let fixedID = null;
+let replyTo = null;
+
+// ===== ID生成 =====
+function generateRandomID(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < length; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+}
 
 // ===== ログイン =====
 auth.onAuthStateChanged(user => {
@@ -62,17 +98,53 @@ auth.onAuthStateChanged(user => {
 
   currentUser = user;
   const name = localStorage.getItem("displayName") || user.email;
-
   const userRef = db.ref("users/" + user.uid);
 
   userRef.child("fixedID").once("value").then(snap => {
-    fixedID = snap.val() || Math.random().toString(36).substring(2, 10);
+    fixedID = snap.val() || generateRandomID(8);
     userRef.child("fixedID").set(fixedID);
 
     document.getElementById("status").innerText =
       `${name} [${fixedID}]`;
+
+    db.ref("chat").push({
+      uid: "system",
+      name: "システム",
+      message: `${name} が入室しました`,
+      time: new Date().toLocaleString()
+    });
+
+    const onlineRef = db.ref("onlineUsers/" + user.uid);
+    const connectedRef = db.ref(".info/connected");
+
+    connectedRef.on("value", snap => {
+      if (snap.val() === true) {
+        onlineRef.onDisconnect().remove();
+        onlineRef.set({ name: name, id: fixedID });
+      }
+    });
   });
 });
+
+// ===== ログアウト =====
+document.getElementById("logoutBtn").onclick = () => {
+  if (!currentUser) return;
+  db.ref("onlineUsers/" + currentUser.uid).remove();
+  auth.signOut();
+  location.href = "index.html";
+};
+
+// ===== 返信 =====
+function setReply(msg) {
+  replyTo = msg;
+  document.getElementById("replyBox").style.display = "block";
+  document.getElementById("replyText").innerText =
+    `${msg.name}: ${msg.message}`;
+}
+function cancelReply() {
+  replyTo = null;
+  document.getElementById("replyBox").style.display = "none";
+}
 
 // ===== 送信（画像対応）=====
 async function send() {
@@ -90,28 +162,32 @@ async function send() {
   // 画像アップロード
   if (file) {
     const filePath = "images/" + Date.now() + "_" + file.name;
-    const ref = storage.ref(filePath);
-
-    await ref.put(file);
-    imageUrl = await ref.getDownloadURL();
+    const storageRef = storage.ref(filePath);
+    await storageRef.put(file);
+    imageUrl = await storageRef.getDownloadURL();
   }
 
-  // 送信
   db.ref("chat").push({
     uid: currentUser.uid,
     name: `${name} [${fixedID}]`,
     message: text || "",
-    image: imageUrl || null,
-    time: new Date().toLocaleString()
+    image: imageUrl,
+    time: new Date().toLocaleString(),
+    reply: replyTo ? {
+      name: replyTo.name,
+      message: replyTo.message
+    } : null
   });
 
   document.getElementById("msg").value = "";
   document.getElementById("imageInput").value = "";
+  cancelReply();
 }
 
 // ===== 表示 =====
 db.ref("chat").on("child_added", data => {
   const msg = data.val();
+  const key = data.key;
 
   const div = document.createElement("div");
   div.style.padding = "5px";
@@ -120,33 +196,81 @@ db.ref("chat").on("child_added", data => {
 
   if (msg.uid === currentUser?.uid) {
     div.style.background = "#d0ebff";
+  } else if (msg.uid === "system") {
+    div.style.background = "#ffeebb";
+    div.classList.add("systemMsg");
+    if (!showSystemMsg) div.style.display = "none";
   } else {
     div.style.background = "#f0f0f0";
   }
 
-  div.innerHTML = `<b>${msg.name}</b> [${msg.time}]`;
+  const header = document.createElement("div");
+  header.style.display = "flex";
+  header.style.justifyContent = "space-between";
 
-  // テキスト
+  const info = document.createElement("span");
+  info.innerHTML = `<b>${msg.name}</b> [${msg.time}]`;
+  header.appendChild(info);
+
+  const btnArea = document.createElement("div");
+
+  if (msg.uid !== "system") {
+    const replyBtn = document.createElement("button");
+    replyBtn.innerText = "返信";
+    replyBtn.onclick = () => setReply(msg);
+    btnArea.appendChild(replyBtn);
+  }
+
+  if (msg.uid === currentUser?.uid) {
+    const delBtn = document.createElement("button");
+    delBtn.innerText = "削除";
+    delBtn.onclick = () => {
+      if (confirm("削除しますか？")) {
+        db.ref("chat/" + key).remove();
+      }
+    };
+    btnArea.appendChild(delBtn);
+  }
+
+  header.appendChild(btnArea);
+
+  const body = document.createElement("div");
+
+  if (msg.reply) {
+    const r = document.createElement("div");
+    r.style.background = "#ddd";
+    r.style.fontSize = "12px";
+    r.innerText = `↪ ${msg.reply.name}: ${msg.reply.message}`;
+    body.appendChild(r);
+  }
+
   if (msg.message) {
     const text = document.createElement("div");
     text.innerText = msg.message;
-    div.appendChild(text);
+    body.appendChild(text);
   }
 
-  // 画像
+  // ===== 画像表示 =====
   if (msg.image) {
     const img = document.createElement("img");
     img.src = msg.image;
     img.style.maxWidth = "200px";
     img.style.display = "block";
     img.style.marginTop = "5px";
-    div.appendChild(img);
+    body.appendChild(img);
   }
+
+  div.appendChild(header);
+  div.appendChild(body);
+
+  db.ref("chat/" + key).on("value", snap => {
+    if (!snap.exists()) div.remove();
+  });
 
   document.getElementById("chat").prepend(div);
 });
 
-// ===== オンライン =====
+// ===== オンライン表示 =====
 const onlineDiv = document.getElementById("onlineUsers");
 const onlineCount = document.getElementById("onlineCount");
 
