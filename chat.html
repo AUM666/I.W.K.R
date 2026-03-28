@@ -51,7 +51,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
 
-// ---------------- 固定ID生成 ----------------
+// ランダムID
 function generateRandomID(length = 8) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let id = '';
@@ -60,7 +60,6 @@ function generateRandomID(length = 8) {
   }
   return id;
 }
-// ------------------------------------------
 
 // 入室メッセージON/OFF
 let showSystemMsg = true;
@@ -80,7 +79,7 @@ toggleCheckbox.addEventListener("change", e => {
 let currentUser = null;
 let fixedID = null;
 
-// ログイン処理
+// ログイン
 auth.onAuthStateChanged(user => {
   if (!user || !user.emailVerified) {
     alert("ログインしてください");
@@ -101,7 +100,6 @@ auth.onAuthStateChanged(user => {
       document.getElementById("status").innerText =
         "ログイン中: " + name + " [" + fixedID + "]";
 
-      // 入室メッセージ
       db.ref("chat").push({
         uid: "system",
         name: "システム",
@@ -109,7 +107,6 @@ auth.onAuthStateChanged(user => {
         time: new Date().toLocaleString()
       });
 
-      // -------- オンライン登録 --------
       const onlineRef = db.ref("onlineUsers/" + user.uid);
       const connectedRef = db.ref(".info/connected");
 
@@ -122,7 +119,6 @@ auth.onAuthStateChanged(user => {
           onlineRef.onDisconnect().remove();
         }
       });
-      // --------------------------------
     });
   }
 });
@@ -139,7 +135,7 @@ document.getElementById("logoutBtn").addEventListener("click", () => {
   });
 });
 
-// メッセージ送信
+// 送信
 function send() {
   if (!currentUser) return;
 
@@ -158,9 +154,10 @@ function send() {
   document.getElementById("msg").value = "";
 }
 
-// チャット表示
+// -------- チャット表示（削除ボタン追加）--------
 db.ref("chat").on("child_added", data => {
   const msg = data.val();
+  const key = data.key;
 
   const div = document.createElement("div");
   div.style.padding = "5px";
@@ -177,11 +174,51 @@ db.ref("chat").on("child_added", data => {
     div.style.background = "#f0f0f0";
   }
 
-  div.innerHTML = `<b>${msg.name}</b> [${msg.time}]<br>${msg.message}`;
+  // 上段（名前 + 日付 + 削除ボタン）
+  const header = document.createElement("div");
+  header.style.display = "flex";
+  header.style.justifyContent = "space-between";
+  header.style.alignItems = "center";
+
+  const info = document.createElement("span");
+  info.innerHTML = `<b>${msg.name}</b> [${msg.time}]`;
+
+  header.appendChild(info);
+
+  // 自分のメッセージだけ削除ボタン
+  if (currentUser && msg.uid === currentUser.uid) {
+    const delBtn = document.createElement("button");
+    delBtn.innerText = "削除";
+    delBtn.style.marginLeft = "10px";
+
+    delBtn.onclick = () => {
+      if (confirm("このメッセージを削除しますか？")) {
+        db.ref("chat/" + key).remove();
+      }
+    };
+
+    header.appendChild(delBtn);
+  }
+
+  // 本文
+  const body = document.createElement("div");
+  body.innerText = msg.message;
+
+  div.appendChild(header);
+  div.appendChild(body);
+
+  // 削除時に画面からも消す
+  db.ref("chat/" + key).on("value", snap => {
+    if (!snap.exists()) {
+      div.remove();
+    }
+  });
+
   document.getElementById("chat").prepend(div);
 });
+// --------------------------------------------
 
-// -------- オンライン一覧 + 人数 --------
+// オンライン一覧
 const onlineDiv = document.getElementById("onlineUsers");
 const onlineCount = document.getElementById("onlineCount");
 
@@ -197,7 +234,6 @@ db.ref("onlineUsers").on("value", snapshot => {
     const div = document.createElement("div");
     div.style.padding = "5px";
     div.style.borderBottom = "1px solid #ddd";
-
     div.innerText = `${user.name} [${user.id}]`;
 
     onlineDiv.appendChild(div);
@@ -205,8 +241,6 @@ db.ref("onlineUsers").on("value", snapshot => {
 
   onlineCount.innerText = count;
 });
-// --------------------------------------
-
 </script>
 
 </body>
