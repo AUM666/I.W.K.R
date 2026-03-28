@@ -41,13 +41,12 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
 
-let user = null;
+let currentUser = null;
 
 // 新規登録
 function signup(){
   let email = document.getElementById("email").value;
   let password = document.getElementById("password").value;
-
   auth.createUserWithEmailAndPassword(email, password)
     .catch(e => alert(e.message));
 }
@@ -56,7 +55,6 @@ function signup(){
 function login(){
   let email = document.getElementById("email").value;
   let password = document.getElementById("password").value;
-
   auth.signInWithEmailAndPassword(email, password)
     .catch(e => alert(e.message));
 }
@@ -69,17 +67,17 @@ function logout(){
 // 状態監視
 auth.onAuthStateChanged(function(u){
   if(u){
-    user = u;
-    document.getElementById("status").innerText = "ログイン中: " + user.email;
+    currentUser = u;
+    document.getElementById("status").innerText = "ログイン中: " + currentUser.email;
   } else {
-    user = null;
+    currentUser = null;
     document.getElementById("status").innerText = "未ログイン";
   }
 });
 
 // 送信
 function send(){
-  if(!user) return alert("ログインしてください");
+  if(!currentUser) return alert("ログインしてください");
 
   let text = document.getElementById("msg").value;
   if(text === "") return;
@@ -88,8 +86,8 @@ function send(){
   let time = now.toLocaleString();
 
   db.ref("chat").push({
-    uid: user.uid,
-    name: user.email,
+    uid: currentUser.uid,
+    name: currentUser.email,
     message: text,
     time: time
   });
@@ -99,21 +97,25 @@ function send(){
 
 // 受信
 db.ref("chat").on("child_added", function(data){
-  let msg = data.val();
-  let key = data.key;
+  const msg = data.val();
+  const key = data.key;
 
   let div = document.createElement("div");
+  div.style.padding = "5px";
+  div.style.margin = "3px 0";
+  div.style.borderRadius = "5px";
 
-  if(user && msg.uid === user.uid){
+  // 自分のメッセージかどうか判定
+  if(currentUser && msg.uid === currentUser.uid){
     div.style.background = "#d0ebff";
+  } else {
+    div.style.background = "#f0f0f0";
   }
 
-  div.innerHTML =
-    "<b>" + msg.name + "</b> [" + msg.time + "]<br>" +
-    msg.message;
+  div.innerHTML = "<b>" + msg.name + "</b> [" + msg.time + "]<br>" + msg.message;
 
-  if(user && msg.uid === user.uid){
-    let btn = document.createElement("button");
+  if(currentUser && msg.uid === currentUser.uid){
+    const btn = document.createElement("button");
     btn.innerText = "削除";
     btn.onclick = function(){
       db.ref("chat/" + key).remove();
