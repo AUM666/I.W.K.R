@@ -58,22 +58,26 @@ function send() {
   const time = now.toLocaleString();
 
   if (file) {
-    // ファイルアップロード
     const fileRef = storage.ref("chat_files/" + Date.now() + "_" + file.name);
-    fileRef.put(file).then(snapshot => {
-      snapshot.ref.getDownloadURL().then(url => {
-        db.ref("chat").push({
-          uid: currentUser.uid,
-          name: name,
-          message: text || "",
-          time: time,
-          fileUrl: url,
-          fileType: file.type
+    const uploadTask = fileRef.put(file);
+
+    uploadTask.on('state_changed', 
+      snapshot => {},
+      error => { alert("アップロードエラー: " + error.message); },
+      () => {
+        fileRef.getDownloadURL().then(url => {
+          db.ref("chat").push({
+            uid: currentUser.uid,
+            name: name,
+            message: text || "",
+            time: time,
+            fileUrl: url,
+            fileType: file.type
+          });
         });
-      });
-    });
+      }
+    );
   } else if (text) {
-    // テキストだけ送信
     db.ref("chat").push({
       uid: currentUser.uid,
       name: name,
@@ -105,16 +109,17 @@ db.ref("chat").on("child_added", data => {
   let content = "<b>" + msg.name + "</b> [" + msg.time + "]<br>";
   content += msg.message ? msg.message + "<br>" : "";
 
-  // ファイル表示
   if (msg.fileUrl) {
     if (msg.fileType.startsWith("image/")) {
       content += `<img src="${msg.fileUrl}" style="max-width:200px; display:block; margin-top:5px;">`;
     } else if (msg.fileType.startsWith("video/")) {
-      content += `<video src="${msg.fileUrl}" controls style="max-width:200px; display:block; margin-top:5px;"></video>`;
+      content += `<video controls style="max-width:200px; display:block; margin-top:5px;">
+                    <source src="${msg.fileUrl}" type="${msg.fileType}">
+                  </video>`;
     }
   }
 
-  div.innerHTML = content;
+  div.innerHTML += content;
 
   // 自分のメッセージ削除ボタン
   if (currentUser && msg.uid === currentUser.uid) {
@@ -123,7 +128,6 @@ db.ref("chat").on("child_added", data => {
     btn.onclick = () => {
       db.ref("chat/" + key).remove();
       div.remove();
-      // 画像・動画もStorageから削除
       if (msg.fileUrl) {
         storage.refFromURL(msg.fileUrl).delete().catch(() => {});
       }
