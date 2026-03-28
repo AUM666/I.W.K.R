@@ -25,40 +25,46 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
 <script>
+// Firebase設定
 const firebaseConfig = {
   apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
   authDomain: "aumkyou.firebaseapp.com",
   databaseURL: "https://aumkyou-default-rtdb.firebaseio.com",
   projectId: "aumkyou"
 };
-
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
 
-let currentUser = null;
+// ------------------- 固定ID生成関数 -------------------
+function generateRandomID(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < length; i++) {
+    const index = Math.floor(Math.random() * chars.length);
+    id += chars.charAt(index);
+  }
+  return id;
+}
+// ----------------------------------------------------
 
 // 入室メッセージ表示ON/OFF
 let showSystemMsg = true;
 const toggleCheckbox = document.getElementById("toggleSystemMsg");
-
-// ページ読み込み時にlocalStorageからON/OFFを復元
 const stored = localStorage.getItem("showSystemMsg");
-if (stored !== null) {
-  showSystemMsg = stored === "true";
-}
+if (stored !== null) showSystemMsg = stored === "true";
 toggleCheckbox.checked = showSystemMsg;
 
-// チェックボックス変更時に保存
 toggleCheckbox.addEventListener("change", e => {
   showSystemMsg = e.target.checked;
   localStorage.setItem("showSystemMsg", showSystemMsg);
-
-  // チャットを再描画して非表示に反映
   document.querySelectorAll(".systemMsg").forEach(div => {
     div.style.display = showSystemMsg ? "block" : "none";
   });
 });
+
+let currentUser = null;
+let fixedID = null;
 
 // ログイン確認
 auth.onAuthStateChanged(user => {
@@ -68,15 +74,27 @@ auth.onAuthStateChanged(user => {
   } else {
     currentUser = user;
     const name = localStorage.getItem("displayName") || user.email;
-    document.getElementById("status").innerText = "ログイン中: " + name;
 
-    // 入室メッセージをチャットに送信
-    const now = new Date();
-    db.ref("chat").push({
-      uid: "system",
-      name: "システム",
-      message: `${name} が入室しました`,
-      time: now.toLocaleString()
+    // Firebase UIDに紐付けた固定ID取得または生成
+    const userRef = db.ref("users/" + user.uid);
+    userRef.child("fixedID").once("value").then(snapshot => {
+      fixedID = snapshot.val();
+      if (!fixedID) {
+        fixedID = generateRandomID(8);
+        userRef.child("fixedID").set(fixedID);
+      }
+
+      // ステータス表示
+      document.getElementById("status").innerText = "ログイン中: " + name + " [" + fixedID + "]";
+
+      // 入室メッセージ
+      const now = new Date();
+      db.ref("chat").push({
+        uid: "system",
+        name: "システム",
+        message: `${name} [${fixedID}] が入室しました`,
+        time: now.toLocaleString()
+      });
     });
   }
 });
@@ -88,14 +106,13 @@ function send() {
   const text = document.getElementById("msg").value;
   if (!text) return;
 
-  const now = new Date();
   const name = localStorage.getItem("displayName") || currentUser.email;
 
   db.ref("chat").push({
     uid: currentUser.uid,
-    name: name,
+    name: `${name} [${fixedID}]`,
     message: text,
-    time: now.toLocaleString()
+    time: new Date().toLocaleString()
   });
 
   document.getElementById("msg").value = "";
@@ -114,10 +131,9 @@ db.ref("chat").on("child_added", data => {
   if (currentUser && msg.uid === currentUser.uid) {
     div.style.background = "#d0ebff";
   } else if (msg.uid === "system") {
-    div.style.background = "#ffeebb"; // システムメッセージは黄色
+    div.style.background = "#ffeebb";
     div.style.fontStyle = "italic";
     div.classList.add("systemMsg");
-    // 表示ON/OFFに応じて非表示
     if (!showSystemMsg) div.style.display = "none";
   } else {
     div.style.background = "#f0f0f0";
@@ -125,7 +141,6 @@ db.ref("chat").on("child_added", data => {
 
   div.innerHTML = "<b>" + msg.name + "</b> [" + msg.time + "]<br>" + msg.message;
 
-  // 自分のメッセージ削除ボタン
   if (currentUser && msg.uid === currentUser.uid) {
     const btn = document.createElement("button");
     btn.innerText = "削除";
