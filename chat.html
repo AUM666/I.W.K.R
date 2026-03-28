@@ -8,29 +8,28 @@
 
 <div style="display:flex; height:100vh;">
 
-  <!-- 左 -->
+  <!-- 左：チャット -->
   <div style="flex:3; padding:10px;">
-    <h2>チャット</h2>
+    <h2>チャットページ</h2>
     <p id="status"></p>
     <button id="logoutBtn">ログアウト</button>
-
     <br><br>
 
-    <input id="msg">
-    <button onclick="send()">送信</button>
+    <label>
+      <input type="checkbox" id="toggleSystemMsg">
+      入室メッセージを表示
+    </label>
+    <br><br>
 
-    <!-- 返信プレビュー -->
-    <div id="replyPreview" style="display:none; background:#eee; padding:5px; margin-top:5px;">
-      返信中: <span id="replyText"></span>
-      <button onclick="cancelReply()">×</button>
-    </div>
+    <input id="msg" placeholder="メッセージ">
+    <button onclick="send()">送信</button>
 
     <div id="chat"></div>
   </div>
 
-  <!-- 右 -->
+  <!-- 右：オンライン -->
   <div style="flex:1; border-left:1px solid #ccc; padding:10px;">
-    <h3>オンライン (<span id="onlineCount">0</span>)</h3>
+    <h3>オンライン (<span id="onlineCount">0</span>人)</h3>
     <div id="onlineUsers"></div>
   </div>
 
@@ -41,6 +40,7 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
 <script>
+// Firebase設定
 const firebaseConfig = {
   apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
   authDomain: "aumkyou.firebaseapp.com",
@@ -48,192 +48,165 @@ const firebaseConfig = {
   projectId: "aumkyou"
 };
 firebase.initializeApp(firebaseConfig);
-
 const db = firebase.database();
 const auth = firebase.auth();
 
-let currentUser = null;
-let fixedID = null;
-let replyTo = null;
-
-// ---------------- 固定ID ----------------
-function generateRandomID(length=8){
-  const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let id="";
-  for(let i=0;i<length;i++){
-    id+=chars[Math.floor(Math.random()*chars.length)];
+// ---------------- 固定ID生成 ----------------
+function generateRandomID(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < length; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return id;
 }
+// ------------------------------------------
 
-// ---------------- 返信 ----------------
-function startReply(msg, key){
-  replyTo = { key, name: msg.name, message: msg.message };
-  document.getElementById("replyPreview").style.display="block";
-  document.getElementById("replyText").innerText =
-    msg.name + ": " + msg.message;
-}
+// 入室メッセージON/OFF
+let showSystemMsg = true;
+const toggleCheckbox = document.getElementById("toggleSystemMsg");
+const stored = localStorage.getItem("showSystemMsg");
+if (stored !== null) showSystemMsg = stored === "true";
+toggleCheckbox.checked = showSystemMsg;
 
-function cancelReply(){
-  replyTo=null;
-  document.getElementById("replyPreview").style.display="none";
-}
-
-// ---------------- ログイン ----------------
-auth.onAuthStateChanged(user=>{
-  if(!user || !user.emailVerified){
-    location.href="index.html";
-    return;
-  }
-
-  currentUser=user;
-  const name = localStorage.getItem("displayName") || user.email;
-
-  const ref=db.ref("users/"+user.uid);
-  ref.child("fixedID").once("value").then(snap=>{
-    fixedID=snap.val();
-    if(!fixedID){
-      fixedID=generateRandomID();
-      ref.child("fixedID").set(fixedID);
-    }
-
-    document.getElementById("status").innerText =
-      name+" ["+fixedID+"]";
-
-    db.ref("chat").push({
-      uid:"system",
-      name:"システム",
-      message:`${name} [${fixedID}] が入室しました`,
-      time:new Date().toLocaleString()
-    });
-
-    const onlineRef=db.ref("onlineUsers/"+user.uid);
-    db.ref(".info/connected").on("value",snap=>{
-      if(snap.val()){
-        onlineRef.set({name,id:fixedID});
-        onlineRef.onDisconnect().remove();
-      }
-    });
+toggleCheckbox.addEventListener("change", e => {
+  showSystemMsg = e.target.checked;
+  localStorage.setItem("showSystemMsg", showSystemMsg);
+  document.querySelectorAll(".systemMsg").forEach(div => {
+    div.style.display = showSystemMsg ? "block" : "none";
   });
 });
 
-// ---------------- ログアウト ----------------
-document.getElementById("logoutBtn").onclick=()=>{
-  db.ref("onlineUsers/"+currentUser.uid).remove();
-  auth.signOut();
-  location.href="index.html";
-};
+let currentUser = null;
+let fixedID = null;
 
-// ---------------- 送信 ----------------
-function send(){
-  const text=document.getElementById("msg").value;
-  if(!text) return;
+// ログイン処理
+auth.onAuthStateChanged(user => {
+  if (!user || !user.emailVerified) {
+    alert("ログインしてください");
+    window.location.href = "index.html";
+  } else {
+    currentUser = user;
+    const name = localStorage.getItem("displayName") || user.email;
+
+    const userRef = db.ref("users/" + user.uid);
+
+    userRef.child("fixedID").once("value").then(snapshot => {
+      fixedID = snapshot.val();
+      if (!fixedID) {
+        fixedID = generateRandomID(8);
+        userRef.child("fixedID").set(fixedID);
+      }
+
+      document.getElementById("status").innerText =
+        "ログイン中: " + name + " [" + fixedID + "]";
+
+      // 入室メッセージ
+      db.ref("chat").push({
+        uid: "system",
+        name: "システム",
+        message: `${name} [${fixedID}] が入室しました`,
+        time: new Date().toLocaleString()
+      });
+
+      // -------- オンライン登録 --------
+      const onlineRef = db.ref("onlineUsers/" + user.uid);
+      const connectedRef = db.ref(".info/connected");
+
+      connectedRef.on("value", snap => {
+        if (snap.val() === true) {
+          onlineRef.set({
+            name: name,
+            id: fixedID
+          });
+          onlineRef.onDisconnect().remove();
+        }
+      });
+      // --------------------------------
+    });
+  }
+});
+
+// ログアウト
+document.getElementById("logoutBtn").addEventListener("click", () => {
+  if (!currentUser) return;
+
+  db.ref("onlineUsers/" + currentUser.uid).remove();
+
+  auth.signOut().then(() => {
+    alert("ログアウトしました");
+    window.location.href = "index.html";
+  });
+});
+
+// メッセージ送信
+function send() {
+  if (!currentUser) return;
+
+  const text = document.getElementById("msg").value;
+  if (!text) return;
 
   const name = localStorage.getItem("displayName") || currentUser.email;
 
   db.ref("chat").push({
-    uid:currentUser.uid,
-    name:`${name} [${fixedID}]`,
-    message:text,
-    time:new Date().toLocaleString(),
-    replyTo: replyTo
+    uid: currentUser.uid,
+    name: `${name} [${fixedID}]`,
+    message: text,
+    time: new Date().toLocaleString()
   });
 
-  document.getElementById("msg").value="";
-  cancelReply();
+  document.getElementById("msg").value = "";
 }
 
-// ---------------- チャット表示 ----------------
-db.ref("chat").on("child_added",data=>{
-  const msg=data.val();
-  const key=data.key;
+// チャット表示
+db.ref("chat").on("child_added", data => {
+  const msg = data.val();
 
-  const div=document.createElement("div");
-  div.id="msg-"+key;
-  div.style.padding="5px";
-  div.style.margin="3px 0";
-  div.style.borderRadius="5px";
+  const div = document.createElement("div");
+  div.style.padding = "5px";
+  div.style.margin = "3px 0";
+  div.style.borderRadius = "5px";
 
-  if(msg.uid==="system"){
-    div.style.background="#ffeebb";
-  }else{
-    div.style.background="#f0f0f0";
+  if (currentUser && msg.uid === currentUser.uid) {
+    div.style.background = "#d0ebff";
+  } else if (msg.uid === "system") {
+    div.style.background = "#ffeebb";
+    div.classList.add("systemMsg");
+    if (!showSystemMsg) div.style.display = "none";
+  } else {
+    div.style.background = "#f0f0f0";
   }
 
-  // 🔥 ヘッダー（名前＋時間＋削除）
-  let header = `
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <b>${msg.name}</b> [${msg.time}]
-      </div>
-  `;
-
-  // 自分のメッセージだけ削除ボタン
-  if(currentUser && msg.uid === currentUser.uid){
-    header += `<button onclick="deleteMsg('${key}', this)">削除</button>`;
-  }
-
-  header += `</div>`;
-
-  let html = header;
-
-  // 返信表示
-  if(msg.replyTo){
-    html+=`
-      <div style="background:#ddd; cursor:pointer; padding:3px;"
-           onclick="scrollToMsg('${msg.replyTo.key}')">
-        ↪ ${msg.replyTo.name}: ${msg.replyTo.message}
-      </div>
-    `;
-  }
-
-  html += msg.message;
-
-  div.innerHTML = html;
-
-  // 返信ボタン（下に配置）
-  const btn=document.createElement("button");
-  btn.innerText="返信";
-  btn.onclick=()=>startReply(msg,key);
-  div.appendChild(btn);
-
+  div.innerHTML = `<b>${msg.name}</b> [${msg.time}]<br>${msg.message}`;
   document.getElementById("chat").prepend(div);
 });
 
-// ---------------- 削除 ----------------
-function deleteMsg(key, btn){
-  db.ref("chat/"+key).remove();
-  btn.parentElement.parentElement.remove();
-}
+// -------- オンライン一覧 + 人数 --------
+const onlineDiv = document.getElementById("onlineUsers");
+const onlineCount = document.getElementById("onlineCount");
 
-// ---------------- ジャンプ ----------------
-function scrollToMsg(key){
-  const el=document.getElementById("msg-"+key);
-  if(el){
-    el.scrollIntoView({behavior:"smooth", block:"center"});
-    el.style.background="#fffa9e";
-    setTimeout(()=>el.style.background="",1000);
-  }
-}
+db.ref("onlineUsers").on("value", snapshot => {
+  onlineDiv.innerHTML = "";
 
-// ---------------- オンライン ----------------
-const onlineDiv=document.getElementById("onlineUsers");
-const onlineCount=document.getElementById("onlineCount");
+  let count = 0;
 
-db.ref("onlineUsers").on("value",snap=>{
-  onlineDiv.innerHTML="";
-  let count=0;
-
-  snap.forEach(child=>{
+  snapshot.forEach(child => {
+    const user = child.val();
     count++;
-    const u=child.val();
-    const d=document.createElement("div");
-    d.innerText=`${u.name} [${u.id}]`;
-    onlineDiv.appendChild(d);
+
+    const div = document.createElement("div");
+    div.style.padding = "5px";
+    div.style.borderBottom = "1px solid #ddd";
+
+    div.innerText = `${user.name} [${user.id}]`;
+
+    onlineDiv.appendChild(div);
   });
 
-  onlineCount.innerText=count;
+  onlineCount.innerText = count;
 });
+// --------------------------------------
+
 </script>
 
 </body>
