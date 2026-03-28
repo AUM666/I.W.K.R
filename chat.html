@@ -2,35 +2,23 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>IWKRchat</title>
-
-<style>
-body {
-  font-family: monospace;
-  background: #f5f5f5;
-}
-
-.msg {
-  margin: 5px;
-  padding: 5px;
-  border-bottom: 1px solid #ccc;
-}
-
-.me {
-  background: #d0ebff;
-}
-
-button {
-  margin-left: 10px;
-}
-</style>
-
+<title>チャット</title>
 </head>
 <body>
 
-<h2>IWKRchat</h2>
+<h2>ログイン</h2>
 
-<p id="welcome"></p>
+<input id="email" placeholder="メール">
+<input id="password" type="password" placeholder="パスワード">
+
+<br><br>
+<button onclick="signup()">新規登録</button>
+<button onclick="login()">ログイン</button>
+<button onclick="logout()">ログアウト</button>
+
+<p id="status"></p>
+
+<hr>
 
 <input id="msg" placeholder="メッセージ">
 <button onclick="send()">送信</button>
@@ -39,6 +27,7 @@ button {
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
 <script>
 const firebaseConfig = {
@@ -50,27 +39,57 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+const auth = firebase.auth();
 
-let name = localStorage.getItem("username") || "名無し";
+let user = null;
 
-document.getElementById("welcome").innerText = "ようこそ " + name + " さん";
+// 新規登録
+function signup(){
+  let email = document.getElementById("email").value;
+  let password = document.getElementById("password").value;
 
-// 🔥 送信
-function send() {
+  auth.createUserWithEmailAndPassword(email, password)
+    .catch(e => alert(e.message));
+}
+
+// ログイン
+function login(){
+  let email = document.getElementById("email").value;
+  let password = document.getElementById("password").value;
+
+  auth.signInWithEmailAndPassword(email, password)
+    .catch(e => alert(e.message));
+}
+
+// ログアウト
+function logout(){
+  auth.signOut();
+}
+
+// 状態監視
+auth.onAuthStateChanged(function(u){
+  if(u){
+    user = u;
+    document.getElementById("status").innerText = "ログイン中: " + user.email;
+  } else {
+    user = null;
+    document.getElementById("status").innerText = "未ログイン";
+  }
+});
+
+// 送信
+function send(){
+  if(!user) return alert("ログインしてください");
+
   let text = document.getElementById("msg").value;
-  if (text === "") return;
+  if(text === "") return;
 
   let now = new Date();
-
-  let time =
-    now.getFullYear() + "/" +
-    String(now.getMonth()+1).padStart(2,"0") + "/" +
-    String(now.getDate()).padStart(2,"0") + " " +
-    String(now.getHours()).padStart(2,"0") + ":" +
-    String(now.getMinutes()).padStart(2,"0");
+  let time = now.toLocaleString();
 
   db.ref("chat").push({
-    name: name,
+    uid: user.uid,
+    name: user.email,
     message: text,
     time: time
   });
@@ -78,28 +97,22 @@ function send() {
   document.getElementById("msg").value = "";
 }
 
-// 🔥 受信（最新が上）
-db.ref("chat").on("child_added", function(data) {
+// 受信
+db.ref("chat").on("child_added", function(data){
   let msg = data.val();
   let key = data.key;
-  let chat = document.getElementById("chat");
 
   let div = document.createElement("div");
 
-  // 自分のメッセージ色分け
-  if(msg.name === name){
-    div.className = "msg me";
-  } else {
-    div.className = "msg";
+  if(user && msg.uid === user.uid){
+    div.style.background = "#d0ebff";
   }
 
-  // 表示（名前の横に時間）
   div.innerHTML =
     "<b>" + msg.name + "</b> [" + msg.time + "]<br>" +
     msg.message;
 
-  // 自分のメッセージ削除
-  if(msg.name === name){
+  if(user && msg.uid === user.uid){
     let btn = document.createElement("button");
     btn.innerText = "削除";
     btn.onclick = function(){
@@ -109,8 +122,7 @@ db.ref("chat").on("child_added", function(data) {
     div.appendChild(btn);
   }
 
-  // 上に追加
-  chat.prepend(div);
+  document.getElementById("chat").prepend(div);
 });
 </script>
 
