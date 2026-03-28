@@ -52,6 +52,7 @@ const firebaseConfig = {
   projectId: "aumkyou"
 };
 firebase.initializeApp(firebaseConfig);
+
 const db = firebase.database();
 const auth = firebase.auth();
 
@@ -72,6 +73,11 @@ document.getElementById("toggleSystemMsg").addEventListener("change", e => {
 let currentUser = null;
 let fixedID = null;
 let replyTo = null;
+
+// ===== 画像URL判定 =====
+function isImageURL(text) {
+  return /(https?:\/\/.*\.(png|jpg|jpeg|gif|webp))/i.test(text);
+}
 
 // ===== ID生成 =====
 function generateRandomID(length = 8) {
@@ -102,7 +108,6 @@ auth.onAuthStateChanged(user => {
     document.getElementById("status").innerText =
       `${name} [${fixedID}]`;
 
-    // 入室メッセージ
     db.ref("chat").push({
       uid: "system",
       name: "システム",
@@ -110,18 +115,13 @@ auth.onAuthStateChanged(user => {
       time: new Date().toLocaleString()
     });
 
-    // ===== オンライン（修正済み）=====
     const onlineRef = db.ref("onlineUsers/" + user.uid);
     const connectedRef = db.ref(".info/connected");
 
     connectedRef.on("value", snap => {
       if (snap.val() === true) {
         onlineRef.onDisconnect().remove();
-
-        onlineRef.set({
-          name: name,
-          id: fixedID
-        });
+        onlineRef.set({ name: name, id: fixedID });
       }
     });
   });
@@ -130,7 +130,6 @@ auth.onAuthStateChanged(user => {
 // ===== ログアウト =====
 document.getElementById("logoutBtn").onclick = () => {
   if (!currentUser) return;
-
   db.ref("onlineUsers/" + currentUser.uid).remove();
   auth.signOut();
   location.href = "index.html";
@@ -187,7 +186,7 @@ db.ref("chat").on("child_added", data => {
   } else if (msg.uid === "system") {
     div.style.background = "#ffeebb";
     div.classList.add("systemMsg");
-    if (!showSystemMsg) div.style.display = "none"; // ← 修正
+    if (!showSystemMsg) div.style.display = "none";
   } else {
     div.style.background = "#f0f0f0";
   }
@@ -202,16 +201,13 @@ db.ref("chat").on("child_added", data => {
 
   const btnArea = document.createElement("div");
 
-  // 返信
   if (msg.uid !== "system") {
     const replyBtn = document.createElement("button");
     replyBtn.innerText = "返信";
-    replyBtn.style.marginRight = "10px";
     replyBtn.onclick = () => setReply(msg);
     btnArea.appendChild(replyBtn);
   }
 
-  // 削除
   if (msg.uid === currentUser?.uid) {
     const delBtn = document.createElement("button");
     delBtn.innerText = "削除";
@@ -235,9 +231,25 @@ db.ref("chat").on("child_added", data => {
     body.appendChild(r);
   }
 
-  const text = document.createElement("div");
-  text.innerText = msg.message;
-  body.appendChild(text);
+  // ===== テキスト＆画像URL対応 =====
+  if (msg.message) {
+    const parts = msg.message.split(/\s+/);
+
+    parts.forEach(part => {
+      if (isImageURL(part)) {
+        const img = document.createElement("img");
+        img.src = part;
+        img.style.maxWidth = "200px";
+        img.style.display = "block";
+        img.style.marginTop = "5px";
+        body.appendChild(img);
+      } else {
+        const span = document.createElement("span");
+        span.innerText = part + " ";
+        body.appendChild(span);
+      }
+    });
+  }
 
   div.appendChild(header);
   div.appendChild(body);
@@ -249,7 +261,7 @@ db.ref("chat").on("child_added", data => {
   document.getElementById("chat").prepend(div);
 });
 
-// ===== オンライン表示（修正済み）=====
+// ===== オンライン表示 =====
 const onlineDiv = document.getElementById("onlineUsers");
 const onlineCount = document.getElementById("onlineCount");
 
