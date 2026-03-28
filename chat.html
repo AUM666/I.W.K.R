@@ -16,21 +16,14 @@
 
     <br><br>
 
-    <label>
-      <input type="checkbox" id="toggleSystemMsg">
-      入室メッセージ表示
-    </label>
-
-    <br><br>
+    <input id="msg">
+    <button onclick="send()">送信</button>
 
     <!-- 返信プレビュー -->
-    <div id="replyPreview" style="display:none; background:#eee; padding:5px;">
+    <div id="replyPreview" style="display:none; background:#eee; padding:5px; margin-top:5px;">
       返信中: <span id="replyText"></span>
       <button onclick="cancelReply()">×</button>
     </div>
-
-    <input id="msg">
-    <button onclick="send()">送信</button>
 
     <div id="chat"></div>
   </div>
@@ -75,11 +68,7 @@ function generateRandomID(length=8){
 
 // ---------------- 返信 ----------------
 function startReply(msg, key){
-  replyTo = {
-    key: key,
-    name: msg.name,
-    message: msg.message
-  };
+  replyTo = { key, name: msg.name, message: msg.message };
   document.getElementById("replyPreview").style.display="block";
   document.getElementById("replyText").innerText =
     msg.name + ": " + msg.message;
@@ -111,7 +100,6 @@ auth.onAuthStateChanged(user=>{
     document.getElementById("status").innerText =
       name+" ["+fixedID+"]";
 
-    // 入室
     db.ref("chat").push({
       uid:"system",
       name:"システム",
@@ -119,7 +107,6 @@ auth.onAuthStateChanged(user=>{
       time:new Date().toLocaleString()
     });
 
-    // オンライン
     const onlineRef=db.ref("onlineUsers/"+user.uid);
     db.ref(".info/connected").on("value",snap=>{
       if(snap.val()){
@@ -173,9 +160,24 @@ db.ref("chat").on("child_added",data=>{
     div.style.background="#f0f0f0";
   }
 
-  let html=`<b>${msg.name}</b> [${msg.time}]<br>`;
+  // 🔥 ヘッダー（名前＋時間＋削除）
+  let header = `
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <b>${msg.name}</b> [${msg.time}]
+      </div>
+  `;
 
-  // 返信表示（クリックでジャンプ）
+  // 自分のメッセージだけ削除ボタン
+  if(currentUser && msg.uid === currentUser.uid){
+    header += `<button onclick="deleteMsg('${key}', this)">削除</button>`;
+  }
+
+  header += `</div>`;
+
+  let html = header;
+
+  // 返信表示
   if(msg.replyTo){
     html+=`
       <div style="background:#ddd; cursor:pointer; padding:3px;"
@@ -185,10 +187,11 @@ db.ref("chat").on("child_added",data=>{
     `;
   }
 
-  html+=msg.message;
-  div.innerHTML=html;
+  html += msg.message;
 
-  // 返信ボタン
+  div.innerHTML = html;
+
+  // 返信ボタン（下に配置）
   const btn=document.createElement("button");
   btn.innerText="返信";
   btn.onclick=()=>startReply(msg,key);
@@ -196,6 +199,12 @@ db.ref("chat").on("child_added",data=>{
 
   document.getElementById("chat").prepend(div);
 });
+
+// ---------------- 削除 ----------------
+function deleteMsg(key, btn){
+  db.ref("chat/"+key).remove();
+  btn.parentElement.parentElement.remove();
+}
 
 // ---------------- ジャンプ ----------------
 function scrollToMsg(key){
