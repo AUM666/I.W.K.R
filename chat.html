@@ -7,7 +7,11 @@
 <body>
 
 <h2>チャットページ</h2>
+
 <p id="status"></p>
+<button onclick="logout()">ログアウト</button> <!-- ログアウトボタン追加 -->
+
+<hr>
 
 <input id="msg" placeholder="メッセージ">
 <button onclick="send()">送信</button>
@@ -34,8 +38,8 @@ let currentUser = null;
 
 // ログイン確認
 auth.onAuthStateChanged(user => {
-  if (!user || !user.emailVerified) {
-    alert("ログインしてください（メール認証必須）");
+  if (!user || !user.emailVerified) {  // メール認証済みチェック
+    alert("ログインしてください");
     window.location.href = "index.html";
   } else {
     currentUser = user;
@@ -43,6 +47,14 @@ auth.onAuthStateChanged(user => {
     document.getElementById("status").innerText = "ログイン中: " + name;
   }
 });
+
+// ログアウト関数
+function logout() {
+  auth.signOut().then(() => {
+    localStorage.removeItem("displayName"); // 名前も削除
+    window.location.href = "index.html";
+  });
+}
 
 // メッセージ送信
 function send() {
