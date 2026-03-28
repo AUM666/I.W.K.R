@@ -7,7 +7,6 @@
 <body>
 
 <h2>チャットページ</h2>
-
 <p id="status"></p>
 
 <input id="msg" placeholder="メッセージ">
@@ -34,29 +33,31 @@ const auth = firebase.auth();
 let currentUser = null;
 
 // ログイン確認
-auth.onAuthStateChanged(function(user){
-  if(!user){
-    alert("ログインしてください");
+auth.onAuthStateChanged(user => {
+  if (!user || !user.emailVerified) {
+    alert("ログインしてください（メール認証必須）");
     window.location.href = "index.html";
   } else {
     currentUser = user;
-    document.getElementById("status").innerText = "ログイン中: " + currentUser.email;
+    const name = localStorage.getItem("displayName") || user.email;
+    document.getElementById("status").innerText = "ログイン中: " + name;
   }
 });
 
-// 送信
-function send(){
-  if(!currentUser) return alert("ログインしてください");
+// メッセージ送信
+function send() {
+  if (!currentUser) return alert("ログインしてください");
 
   const text = document.getElementById("msg").value;
-  if(text === "") return;
+  if (!text) return;
 
   const now = new Date();
   const time = now.toLocaleString();
+  const name = localStorage.getItem("displayName") || currentUser.email;
 
   db.ref("chat").push({
     uid: currentUser.uid,
-    name: currentUser.email,
+    name: name,
     message: text,
     time: time
   });
@@ -65,7 +66,7 @@ function send(){
 }
 
 // 受信
-db.ref("chat").on("child_added", function(data){
+db.ref("chat").on("child_added", data => {
   const msg = data.val();
   const key = data.key;
 
@@ -74,27 +75,27 @@ db.ref("chat").on("child_added", function(data){
   div.style.margin = "3px 0";
   div.style.borderRadius = "5px";
 
-  // 自分のメッセージか判定
-  if(currentUser && msg.uid === currentUser.uid){
-    div.style.background = "#d0ebff"; // 自分のメッセージは水色
+  // 自分のメッセージは水色
+  if (currentUser && msg.uid === currentUser.uid) {
+    div.style.background = "#d0ebff";
   } else {
-    div.style.background = "#f0f0f0"; // 他人はグレー
+    div.style.background = "#f0f0f0";
   }
 
   div.innerHTML = "<b>" + msg.name + "</b> [" + msg.time + "]<br>" + msg.message;
 
-  // 自分のメッセージだけ削除ボタン追加
-  if(currentUser && msg.uid === currentUser.uid){
+  // 自分のメッセージ削除ボタン
+  if (currentUser && msg.uid === currentUser.uid) {
     const btn = document.createElement("button");
     btn.innerText = "削除";
-    btn.onclick = function(){
+    btn.onclick = () => {
       db.ref("chat/" + key).remove();
       div.remove();
     };
     div.appendChild(btn);
   }
 
-  document.getElementById("chat").prepend(div); // 最新が上
+  document.getElementById("chat").prepend(div);
 });
 </script>
 
