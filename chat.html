@@ -6,21 +6,34 @@
 </head>
 <body>
 
-<h2>チャットページ</h2>
-<p id="status"></p>
-<button id="logoutBtn">ログアウト</button>
-<br><br>
+<div style="display:flex; height:100vh;">
 
-<label>
-  <input type="checkbox" id="toggleSystemMsg">
-  入室メッセージを表示
-</label>
-<br><br>
+  <!-- 左：チャット -->
+  <div style="flex:3; padding:10px;">
+    <h2>チャットページ</h2>
+    <p id="status"></p>
+    <button id="logoutBtn">ログアウト</button>
+    <br><br>
 
-<input id="msg" placeholder="メッセージ">
-<button onclick="send()">送信</button>
+    <label>
+      <input type="checkbox" id="toggleSystemMsg">
+      入室メッセージを表示
+    </label>
+    <br><br>
 
-<div id="chat"></div>
+    <input id="msg" placeholder="メッセージ">
+    <button onclick="send()">送信</button>
+
+    <div id="chat"></div>
+  </div>
+
+  <!-- 右：オンライン -->
+  <div style="flex:1; border-left:1px solid #ccc; padding:10px;">
+    <h3>オンライン (<span id="onlineCount">0</span>人)</h3>
+    <div id="onlineUsers"></div>
+  </div>
+
+</div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -38,19 +51,18 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
 
-// ------------------- 固定ID生成関数 -------------------
+// ---------------- 固定ID生成 ----------------
 function generateRandomID(length = 8) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let id = '';
   for (let i = 0; i < length; i++) {
-    const index = Math.floor(Math.random() * chars.length);
-    id += chars.charAt(index);
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return id;
 }
-// ----------------------------------------------------
+// ------------------------------------------
 
-// 入室メッセージ表示ON/OFF
+// 入室メッセージON/OFF
 let showSystemMsg = true;
 const toggleCheckbox = document.getElementById("toggleSystemMsg");
 const stored = localStorage.getItem("showSystemMsg");
@@ -68,17 +80,17 @@ toggleCheckbox.addEventListener("change", e => {
 let currentUser = null;
 let fixedID = null;
 
-// ログイン確認
+// ログイン処理
 auth.onAuthStateChanged(user => {
   if (!user || !user.emailVerified) {
-    alert("ログインしてください（メール認証必須）");
+    alert("ログインしてください");
     window.location.href = "index.html";
   } else {
     currentUser = user;
     const name = localStorage.getItem("displayName") || user.email;
 
-    // Firebase UIDに紐付けた固定ID取得または生成
     const userRef = db.ref("users/" + user.uid);
+
     userRef.child("fixedID").once("value").then(snapshot => {
       fixedID = snapshot.val();
       if (!fixedID) {
@@ -86,36 +98,50 @@ auth.onAuthStateChanged(user => {
         userRef.child("fixedID").set(fixedID);
       }
 
-      // ステータス表示
-      document.getElementById("status").innerText = "ログイン中: " + name + " [" + fixedID + "]";
+      document.getElementById("status").innerText =
+        "ログイン中: " + name + " [" + fixedID + "]";
 
       // 入室メッセージ
-      const now = new Date();
       db.ref("chat").push({
         uid: "system",
         name: "システム",
         message: `${name} [${fixedID}] が入室しました`,
-        time: now.toLocaleString()
+        time: new Date().toLocaleString()
       });
+
+      // -------- オンライン登録 --------
+      const onlineRef = db.ref("onlineUsers/" + user.uid);
+      const connectedRef = db.ref(".info/connected");
+
+      connectedRef.on("value", snap => {
+        if (snap.val() === true) {
+          onlineRef.set({
+            name: name,
+            id: fixedID
+          });
+          onlineRef.onDisconnect().remove();
+        }
+      });
+      // --------------------------------
     });
   }
 });
 
-// ログアウトボタン
+// ログアウト
 document.getElementById("logoutBtn").addEventListener("click", () => {
   if (!currentUser) return;
+
+  db.ref("onlineUsers/" + currentUser.uid).remove();
+
   auth.signOut().then(() => {
     alert("ログアウトしました");
     window.location.href = "index.html";
-  }).catch(err => {
-    console.error(err);
-    alert("ログアウトに失敗しました");
   });
 });
 
 // メッセージ送信
 function send() {
-  if (!currentUser) return alert("ログインしてください");
+  if (!currentUser) return;
 
   const text = document.getElementById("msg").value;
   if (!text) return;
@@ -132,10 +158,9 @@ function send() {
   document.getElementById("msg").value = "";
 }
 
-// チャット受信
+// チャット表示
 db.ref("chat").on("child_added", data => {
   const msg = data.val();
-  const key = data.key;
 
   const div = document.createElement("div");
   div.style.padding = "5px";
@@ -146,27 +171,42 @@ db.ref("chat").on("child_added", data => {
     div.style.background = "#d0ebff";
   } else if (msg.uid === "system") {
     div.style.background = "#ffeebb";
-    div.style.fontStyle = "italic";
     div.classList.add("systemMsg");
     if (!showSystemMsg) div.style.display = "none";
   } else {
     div.style.background = "#f0f0f0";
   }
 
-  div.innerHTML = "<b>" + msg.name + "</b> [" + msg.time + "]<br>" + msg.message;
-
-  if (currentUser && msg.uid === currentUser.uid) {
-    const btn = document.createElement("button");
-    btn.innerText = "削除";
-    btn.onclick = () => {
-      db.ref("chat/" + key).remove();
-      div.remove();
-    };
-    div.appendChild(btn);
-  }
-
+  div.innerHTML = `<b>${msg.name}</b> [${msg.time}]<br>${msg.message}`;
   document.getElementById("chat").prepend(div);
 });
+
+// -------- オンライン一覧 + 人数 --------
+const onlineDiv = document.getElementById("onlineUsers");
+const onlineCount = document.getElementById("onlineCount");
+
+db.ref("onlineUsers").on("value", snapshot => {
+  onlineDiv.innerHTML = "";
+
+  let count = 0;
+
+  snapshot.forEach(child => {
+    const user = child.val();
+    count++;
+
+    const div = document.createElement("div");
+    div.style.padding = "5px";
+    div.style.borderBottom = "1px solid #ddd";
+
+    div.innerText = `${user.name} [${user.id}]`;
+
+    onlineDiv.appendChild(div);
+  });
+
+  onlineCount.innerText = count;
+});
+// --------------------------------------
+
 </script>
 
 </body>
