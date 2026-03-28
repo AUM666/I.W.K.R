@@ -28,11 +28,11 @@ button {
 </head>
 <body>
 
-<h2>2ch風チャット</h2>
+<h2>IWKRchat</h2>
 
 <p id="welcome"></p>
 
-<input id="msg">
+<input id="msg" placeholder="メッセージ">
 <button onclick="send()">送信</button>
 
 <div id="chat"></div>
@@ -51,11 +51,9 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-let name = localStorage.getItem("username");
-let birth = localStorage.getItem("birth");
+let name = localStorage.getItem("username") || "名無し";
 
-document.getElementById("welcome").innerText =
-  name + "（" + birth + "）";
+document.getElementById("welcome").innerText = "ようこそ " + name + " さん";
 
 // 🔥 送信
 function send() {
@@ -64,12 +62,12 @@ function send() {
 
   let now = new Date();
 
-  // 👇 年月日時分を作る
-  let time = now.getFullYear() + "/" +
-             (now.getMonth()+1) + "/" +
-             now.getDate() + " " +
-             now.getHours() + ":" +
-             String(now.getMinutes()).padStart(2, "0");
+  let time =
+    now.getFullYear() + "/" +
+    String(now.getMonth()+1).padStart(2,"0") + "/" +
+    String(now.getDate()).padStart(2,"0") + " " +
+    String(now.getHours()).padStart(2,"0") + ":" +
+    String(now.getMinutes()).padStart(2,"0");
 
   db.ref("chat").push({
     name: name,
@@ -88,14 +86,14 @@ db.ref("chat").on("child_added", function(data) {
 
   let div = document.createElement("div");
 
-  // 自分のメッセージは色つける
+  // 自分のメッセージ色分け
   if(msg.name === name){
     div.className = "msg me";
   } else {
     div.className = "msg";
   }
 
-  // 👇 名前の横に時間表示
+  // 表示（名前の横に時間）
   div.innerHTML =
     "<b>" + msg.name + "</b> [" + msg.time + "]<br>" +
     msg.message;
