@@ -47,6 +47,29 @@ auth.onAuthStateChanged(user => {
   }
 });
 
+// 画像・動画を半分サイズにしてBlob化する関数
+function resizeFile(file, callback) {
+  if (file.type.startsWith("image/")) {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = e => {
+      img.src = e.target.result;
+    };
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width / 2;
+      canvas.height = img.height / 2;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => callback(blob, file.type));
+    };
+    reader.readAsDataURL(file);
+  } else if (file.type.startsWith("video/")) {
+    // 動画はBlobそのまま使う（リサイズは複雑なため簡易）
+    callback(file, file.type);
+  }
+}
+
 // メッセージ送信
 function send() {
   if (!currentUser) return alert("ログインしてください");
@@ -58,25 +81,21 @@ function send() {
   const time = now.toLocaleString();
 
   if (file) {
-    const fileRef = storage.ref("chat_files/" + Date.now() + "_" + file.name);
-    const uploadTask = fileRef.put(file);
-
-    uploadTask.on('state_changed', 
-      snapshot => {},
-      error => { alert("アップロードエラー: " + error.message); },
-      () => {
-        fileRef.getDownloadURL().then(url => {
+    resizeFile(file, (resizedBlob, type) => {
+      const fileRef = storage.ref("chat_files/" + Date.now() + "_" + file.name);
+      fileRef.put(resizedBlob).then(snapshot => {
+        snapshot.ref.getDownloadURL().then(url => {
           db.ref("chat").push({
             uid: currentUser.uid,
             name: name,
             message: text || "",
             time: time,
             fileUrl: url,
-            fileType: file.type
+            fileType: type
           });
         });
-      }
-    );
+      }).catch(err => alert("アップロード失敗: " + err.message));
+    });
   } else if (text) {
     db.ref("chat").push({
       uid: currentUser.uid,
