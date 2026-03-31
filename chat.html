@@ -79,6 +79,16 @@ function isImageURL(text) {
   return /(https?:\/\/.*\.(png|jpg|jpeg|gif|webp))/i.test(text);
 }
 
+// ===== YouTube変換 =====
+function getYouTubeEmbedURL(url) {
+  const reg = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/;
+  const match = url.match(reg);
+  if (match) {
+    return "https://www.youtube.com/embed/" + match[1];
+  }
+  return null;
+}
+
 // ===== ID生成 =====
 function generateRandomID(length = 8) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -231,11 +241,13 @@ db.ref("chat").on("child_added", data => {
     body.appendChild(r);
   }
 
-  // ===== テキスト＆画像URL対応 =====
+  // ===== テキスト解析 =====
   if (msg.message) {
     const parts = msg.message.split(/\s+/);
 
     parts.forEach(part => {
+
+      // ① 画像
       if (isImageURL(part)) {
         const img = document.createElement("img");
         img.src = part;
@@ -243,11 +255,28 @@ db.ref("chat").on("child_added", data => {
         img.style.display = "block";
         img.style.marginTop = "5px";
         body.appendChild(img);
-      } else {
+      }
+
+      // ② YouTube
+      else if (getYouTubeEmbedURL(part)) {
+        const iframe = document.createElement("iframe");
+        iframe.src = getYouTubeEmbedURL(part);
+        iframe.width = "300";
+        iframe.height = "170";
+        iframe.style.border = "none";
+        iframe.allowFullscreen = true;
+        iframe.style.display = "block";
+        iframe.style.marginTop = "5px";
+        body.appendChild(iframe);
+      }
+
+      // ③ テキスト
+      else {
         const span = document.createElement("span");
         span.innerText = part + " ";
         body.appendChild(span);
       }
+
     });
   }
 
