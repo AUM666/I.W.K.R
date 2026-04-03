@@ -10,6 +10,14 @@
 
 <button onclick="googleLogin()">Googleでログイン</button>
 
+<br><br>
+
+<div id="nameBox" style="display:none;">
+  <h3>名前設定</h3>
+  <input id="nameInput" placeholder="表示名を入力">
+  <button onclick="saveName()">決定</button>
+</div>
+
 <p id="status"></p>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -28,55 +36,47 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.database();
 
+let currentUser = null;
+
 // ===== Googleログイン =====
 function googleLogin() {
   const provider = new firebase.auth.GoogleAuthProvider();
 
   auth.signInWithPopup(provider)
-    .then(result => {
-      const user = result.user;
+    .catch(e => alert(e.message));
+}
 
-      // ★ Gmailチェック（念のため）
-      if (!user.email.endsWith("@gmail.com")) {
-        alert("Gmailアカウントのみ使用可能です");
-        auth.signOut();
-        return;
-      }
+// ===== 名前保存 =====
+function saveName() {
+  const name = document.getElementById("nameInput").value;
+  if (!name) return alert("名前を入力してください");
 
-      // 初回ログイン時のみ保存
-      db.ref("users/" + user.uid).once("value", snap => {
-        if (!snap.exists()) {
-          db.ref("users/" + user.uid).set({
-            displayName: user.displayName || user.email
-          });
-        }
-      });
+  db.ref("users/" + currentUser.uid).update({
+    displayName: name
+  });
 
-      localStorage.setItem("displayName", user.displayName || user.email);
+  localStorage.setItem("displayName", name);
 
-      alert("ログイン成功！");
-      window.location.href = "chat.html";
-
-    }).catch(e => {
-      alert(e.message);
-    });
+  window.location.href = "chat.html";
 }
 
 // ===== 状態監視 =====
 auth.onAuthStateChanged(user => {
   if (user) {
-
-    // Gmailチェック
-    if (!user.email.endsWith("@gmail.com")) {
-      alert("Gmailのみ利用可能です");
-      auth.signOut();
-      return;
-    }
+    currentUser = user;
 
     db.ref("users/" + user.uid + "/displayName").once("value", snapshot => {
-      const name = snapshot.val() || user.displayName || user.email;
-      localStorage.setItem("displayName", name);
-      window.location.href = "chat.html";
+      const name = snapshot.val();
+
+      if (name) {
+        // 既に名前ある → そのままチャットへ
+        localStorage.setItem("displayName", name);
+        window.location.href = "chat.html";
+      } else {
+        // 名前未設定 → 入力画面表示
+        document.getElementById("nameBox").style.display = "block";
+        document.getElementById("status").innerText = "名前を設定してください";
+      }
     });
 
   } else {
