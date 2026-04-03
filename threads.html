@@ -40,30 +40,28 @@ auth.onAuthStateChanged(user => {
   currentUser = user;
 });
 
-// スレ作成
+// スレ作成（★UID固定）
 function createThread() {
   const title = document.getElementById("titleInput").value.trim();
   if (!title) return alert("タイトルを入力してください");
 
   const name = localStorage.getItem("displayName") || "名無し";
 
-  const newThread = db.ref("threads").push();
-  newThread.set({
+  db.ref("threads/" + currentUser.uid).set({
     title: title,
     owner: currentUser.uid,
     ownerName: name,
     createdAt: new Date().toLocaleString()
-  });
+  }).catch(e => alert("作成できません（既に作成済みの可能性）"));
 
   document.getElementById("titleInput").value = "";
 }
 
-// スレ一覧表示
+// スレ一覧
 db.ref("threads").on("child_added", snap => {
   const data = snap.val();
   const id = snap.key;
 
-  // ★ ここが重要（undefined防止）
   if (!data || !data.title) return;
 
   const div = document.createElement("div");
