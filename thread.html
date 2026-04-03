@@ -6,7 +6,8 @@
 </head>
 <body>
 
-<button onclick="goBack()" style="position: fixed; top:10px; left:10px;">
+<!-- 戻る -->
+<button onclick="goBack()" style="position:fixed;top:10px;left:10px;z-index:1000;">
 ← スレ一覧
 </button>
 
@@ -18,19 +19,21 @@
     <h2 id="title"></h2>
     <p id="status"></p>
 
-    <!-- 🔑 招待リンク管理 -->
-    <div id="invitePanel" style="display:none; border:1px solid #ccc; padding:5px; margin-bottom:10px;">
+    <!-- 招待リンク -->
+    <div id="invitePanel" style="display:none; border:1px solid #ccc; padding:5px;">
       <b>招待リンク</b><br>
       <button onclick="createInvite()">生成</button>
       <button onclick="deleteInvite()">削除</button>
       <div id="inviteLink" style="word-break:break-all;"></div>
     </div>
 
+    <!-- システム表示 -->
     <label>
       <input type="checkbox" id="toggleSystemMsg">
       システムメッセージ表示
     </label>
 
+    <!-- 返信 -->
     <div id="replyBox" style="display:none; background:#eee; padding:5px;">
       <span id="replyText"></span>
       <button onclick="cancelReply()">×</button>
@@ -70,185 +73,217 @@ const params = new URLSearchParams(location.search);
 const threadId = params.get("id");
 const inviteToken = params.get("invite");
 
-let currentUser = null;
-let fixedID = null;
-let replyTo = null;
-let isAdmin = false;
+let currentUser, fixedID, replyTo = null;
 let isOwner = false;
 
-// ===== ランダムトークン =====
-function randomToken(len=40){
-  const chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let t="";
-  for(let i=0;i<len;i++){
-    t += chars[Math.floor(Math.random()*chars.length)];
-  }
-  return t;
+// ===== 戻る =====
+function goBack(){ location.href="threads.html"; }
+
+// ===== ランダム =====
+function randomID(len=40){
+  const c="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let r="";
+  for(let i=0;i<len;i++) r+=c[Math.floor(Math.random()*c.length)];
+  return r;
 }
 
-// 戻る
-function goBack() {
-  location.href = "threads.html";
-}
+// ===== システム表示 =====
+let showSystemMsg = localStorage.getItem("showSystemMsg") !== "false";
+document.getElementById("toggleSystemMsg").checked = showSystemMsg;
 
-// ===== ログイン & 招待処理 =====
-auth.onAuthStateChanged(user => {
-  if (!user) return location.href = "index.html";
+document.getElementById("toggleSystemMsg").addEventListener("change", e=>{
+  showSystemMsg = e.target.checked;
+  localStorage.setItem("showSystemMsg", showSystemMsg);
 
-  currentUser = user;
-
-  db.ref("threads/" + threadId).once("value").then(snap => {
-    const data = snap.val();
-    if (!data) return;
-
-    // スレ主判定
-    if (data.owner === user.uid) {
-      isOwner = true;
-      document.getElementById("invitePanel").style.display = "block";
-    }
-
-    // 🔑 招待リンク処理
-    if (inviteToken && data.inviteToken && inviteToken === data.inviteToken) {
-      db.ref("threadAccess/" + threadId + "/" + user.uid).set(true);
-
-      // URLからinvite削除（超重要）
-      history.replaceState({}, "", "thread.html?id=" + threadId);
-    }
-
-    // アクセス確認
-    return db.ref("threadAccess/" + threadId + "/" + user.uid).once("value");
-  })
-  .then(accessSnap => {
-
-    if (!accessSnap.exists()) {
-      alert("このスレッドには入れません");
-      location.href = "threads.html";
-      return;
-    }
-
-    startApp();
+  document.querySelectorAll(".systemMsg").forEach(el=>{
+    el.style.display = showSystemMsg ? "block":"none";
   });
 });
 
-// ===== 本体開始 =====
-function startApp() {
+// ===== URL判定 =====
+function isImageURL(text){
+  return /(https?:\/\/.*\.(png|jpg|jpeg|gif|webp))/i.test(text);
+}
 
-  db.ref("admins/" + currentUser.uid).once("value").then(snap => {
-    isAdmin = snap.exists();
+function getYouTubeEmbedURL(url){
+  const reg=/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/;
+  const m=url.match(reg);
+  return m ? "https://www.youtube.com/embed/"+m[1] : null;
+}
+
+// ===== 認証 =====
+auth.onAuthStateChanged(user=>{
+  if(!user) return location.href="index.html";
+
+  currentUser = user;
+
+  db.ref("threads/"+threadId).once("value").then(snap=>{
+    const data = snap.val();
+    if(!data) return;
+
+    document.getElementById("title").innerText = data.title;
+
+    if(data.owner === user.uid){
+      isOwner = true;
+      document.getElementById("invitePanel").style.display="block";
+    }
+
+    // 招待
+    if(inviteToken && inviteToken === data.inviteToken){
+      db.ref("threadAccess/"+threadId+"/"+user.uid).set(true);
+      history.replaceState({}, "", "?id="+threadId);
+    }
+
+    return db.ref("threadAccess/"+threadId+"/"+user.uid).once("value");
+  })
+  .then(snap=>{
+    if(!snap.exists()){
+      alert("入れません");
+      location.href="threads.html";
+      return;
+    }
+
+    start();
   });
+});
 
-  const userRef = db.ref("users/" + currentUser.uid);
+// ===== 開始 =====
+function start(){
 
-  userRef.once("value").then(snap => {
-    const data = snap.val() || {};
+  const userRef = db.ref("users/"+currentUser.uid);
 
-    const name = data.displayName || currentUser.email;
-    localStorage.setItem("displayName", name);
+  userRef.once("value").then(snap=>{
+    const d = snap.val()||{};
+    const name = d.displayName || currentUser.email;
 
-    fixedID = data.fixedID || randomToken(8);
-    userRef.update({ displayName: name, fixedID });
+    fixedID = d.fixedID || randomID(8);
+    userRef.update({displayName:name, fixedID});
 
     document.getElementById("status").innerText =
-      `${name} [${fixedID}]`;
+      name + " ["+fixedID+"]";
 
-    // タイトル
-    db.ref("threads/" + threadId).once("value", snap => {
-      document.getElementById("title").innerText = snap.val().title;
+    // 入室
+    db.ref("threads/"+threadId+"/messages").push({
+      uid:"system",
+      name:"システム",
+      message:name+" が入室しました",
+      time:new Date().toLocaleString()
     });
 
-    // 入室メッセージ
-    db.ref("threads/" + threadId + "/messages").push({
-      uid: "system",
-      name: "システム",
-      message: `${name} が入室しました`,
-      time: new Date().toLocaleString()
+    // オンライン
+    const onlineRef = db.ref("threads/"+threadId+"/online/"+currentUser.uid);
+    const connectedRef = db.ref(".info/connected");
+
+    connectedRef.on("value", snap=>{
+      if(snap.val()){
+        onlineRef.onDisconnect().remove();
+        onlineRef.set({name:name, id:fixedID});
+      }
     });
 
-    loadMessages();
-    loadOnlineUsers();
+    // オンライン表示
+    db.ref("threads/"+threadId+"/online").on("value", snap=>{
+      const data = snap.val()||{};
+      const list = Object.values(data);
+
+      document.getElementById("onlineCount").innerText = list.length;
+
+      const box = document.getElementById("onlineUsers");
+      box.innerHTML="";
+      list.forEach(u=>{
+        const div=document.createElement("div");
+        div.innerText = u.name+" ["+u.id+"]";
+        box.appendChild(div);
+      });
+    });
+
+    // メッセージ表示
+    db.ref("threads/"+threadId+"/messages").on("child_added", snap=>{
+      const msg = snap.val();
+
+      const div=document.createElement("div");
+
+      if(msg.uid==="system"){
+        div.className="systemMsg";
+        if(!showSystemMsg) div.style.display="none";
+      }
+
+      // 本文
+      let content = msg.message;
+
+      if(isImageURL(content)){
+        content = `<img src="${content}" width="200">`;
+      }
+
+      const yt = getYouTubeEmbedURL(content);
+      if(yt){
+        content = `<iframe width="300" height="200" src="${yt}" frameborder="0" allowfullscreen></iframe>`;
+      }
+
+      div.innerHTML = `<b>${msg.name}</b>: ${content}`;
+
+      // 返信ボタン
+      const btn = document.createElement("button");
+      btn.innerText="返信";
+      btn.onclick=()=>{
+        replyTo = msg;
+        document.getElementById("replyBox").style.display="block";
+        document.getElementById("replyText").innerText = msg.message;
+      };
+
+      div.appendChild(btn);
+
+      document.getElementById("chat").prepend(div);
+    });
+
   });
 }
 
-// ===== 招待リンク生成 =====
-function createInvite() {
-  if (!isOwner) return alert("スレ主のみ");
-
-  const token = randomToken();
-
-  db.ref("threads/" + threadId + "/inviteToken").set(token).then(() => {
-    const url = location.origin + location.pathname + "?id=" + threadId + "&invite=" + token;
-    document.getElementById("inviteLink").innerText = url;
-  });
-}
-
-// ===== 招待リンク削除 =====
-function deleteInvite() {
-  if (!isOwner) return alert("スレ主のみ");
-
-  db.ref("threads/" + threadId + "/inviteToken").remove().then(() => {
-    document.getElementById("inviteLink").innerText = "削除しました";
-  });
-}
-
-// ===== 返信 =====
-function setReply(msg) {
-  replyTo = msg;
-  document.getElementById("replyBox").style.display = "block";
-  document.getElementById("replyText").innerText =
-    `${msg.name}: ${msg.message}`;
-}
-function cancelReply() {
-  replyTo = null;
-  document.getElementById("replyBox").style.display = "none";
+// ===== 返信解除 =====
+function cancelReply(){
+  replyTo=null;
+  document.getElementById("replyBox").style.display="none";
 }
 
 // ===== 送信 =====
-function send() {
-  const text = document.getElementById("msg").value;
-  if (!text) return;
+function send(){
+  const text=document.getElementById("msg").value;
+  if(!text)return;
 
-  const name = localStorage.getItem("displayName");
+  const name = document.getElementById("status").innerText;
 
-  db.ref("threads/" + threadId + "/messages").push({
-    uid: currentUser.uid,
-    name: `${name} [${fixedID}]`,
-    message: text,
-    time: new Date().toLocaleString()
+  db.ref("threads/"+threadId+"/messages").push({
+    uid:currentUser.uid,
+    name:name,
+    message:text,
+    reply: replyTo ? replyTo.message : null,
+    time:new Date().toLocaleString()
   });
 
-  document.getElementById("msg").value = "";
+  document.getElementById("msg").value="";
+  cancelReply();
 }
 
-// ===== メッセージ =====
-function loadMessages() {
-  db.ref("threads/" + threadId + "/messages").on("child_added", data => {
-    const msg = data.val();
+// ===== 招待 =====
+function createInvite(){
+  if(!isOwner) return;
 
-    const div = document.createElement("div");
-    div.innerText = `${msg.name}: ${msg.message}`;
+  const token = randomID(40);
 
-    document.getElementById("chat").prepend(div);
+  db.ref("threads/"+threadId+"/inviteToken").set(token).then(()=>{
+    const url = location.origin + location.pathname + "?id="+threadId+"&invite="+token;
+    document.getElementById("inviteLink").innerText=url;
   });
 }
 
-// ===== オンライン =====
-function loadOnlineUsers() {
-  db.ref("threads/" + threadId + "/online").on("value", snapshot => {
-    const div = document.getElementById("onlineUsers");
-    div.innerHTML = "";
-    let count = 0;
+function deleteInvite(){
+  if(!isOwner) return;
 
-    snapshot.forEach(child => {
-      count++;
-      const d = document.createElement("div");
-      d.innerText = child.val().name;
-      div.appendChild(d);
-    });
-
-    document.getElementById("onlineCount").innerText = count;
+  db.ref("threads/"+threadId+"/inviteToken").remove().then(()=>{
+    document.getElementById("inviteLink").innerText="削除しました";
   });
 }
+
 </script>
-
 </body>
 </html>
