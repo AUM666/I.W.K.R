@@ -83,6 +83,9 @@ db.ref("threads").on("child_added", snap => {
 function openThread(id) {
   location.href = "thread.html?id=" + id;
 }
+
+console.log("threads data:", data);
+  
 </script>
 
 </body>
