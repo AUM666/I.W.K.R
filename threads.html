@@ -8,18 +8,14 @@
 
 <h2>スレッド一覧</h2>
 
-<!-- 🔴 ログアウトボタン -->
-<button onclick="logout()" style="
-  position: fixed;
-  top: 10px;
-  right: 10px;
-">
+<button onclick="logout()" style="position: fixed; top:10px; right:10px;">
 ログアウト
 </button>
 
 <div style="border:1px solid #000; padding:10px; margin-bottom:10px;">
   <h3>スレッド作成</h3>
-  <input id="titleInput" placeholder="タイトル">
+  <input id="titleInput" placeholder="タイトル"><br><br>
+  <input id="passInput" type="password" placeholder="パスワード（必須）"><br><br>
   <button onclick="createThread()">作成</button>
 </div>
 
@@ -43,72 +39,94 @@ const auth = firebase.auth();
 
 let currentUser = null;
 
-// ログイン確認
 auth.onAuthStateChanged(user => {
   if (!user) location.href = "index.html";
   currentUser = user;
 });
 
-// 🔴 ログアウト
+// ログアウト
 function logout() {
   if (confirm("ログアウトしますか？")) {
     auth.signOut().then(() => {
-      localStorage.clear(); // 名前など削除
+      localStorage.clear();
       location.href = "index.html";
     });
   }
 }
 
-// スレ作成
+// 作成
 function createThread() {
   const title = document.getElementById("titleInput").value.trim();
+  const password = document.getElementById("passInput").value.trim();
+
   if (!title) return alert("タイトルを入力してください");
+  if (!password) return alert("パスワード必須");
 
   const name = localStorage.getItem("displayName") || "名無し";
 
   db.ref("threads/" + currentUser.uid).set({
-    title: title,
+    title,
+    password,
     owner: currentUser.uid,
     ownerName: name,
     createdAt: new Date().toLocaleString()
   }).then(() => {
-    location.href = "thread.html?id=" + currentUser.uid;
-  }).catch(() => {
-    alert("スレッドは1人1つまでです");
-  });
 
-  document.getElementById("titleInput").value = "";
+    // 作成者は自動で入れる
+    db.ref("threadAccess/" + currentUser.uid + "/" + currentUser.uid).set(true);
+
+    location.href = "thread.html?id=" + currentUser.uid;
+  });
 }
 
-// スレ一覧
+// 開く
+function openThread(id) {
+  db.ref("admins/" + currentUser.uid).once("value").then(adminSnap => {
+
+    // 管理者はスルー
+    if (adminSnap.exists()) {
+      db.ref("threadAccess/" + id + "/" + currentUser.uid).set(true);
+      location.href = "thread.html?id=" + id;
+      return;
+    }
+
+    db.ref("threads/" + id + "/password").once("value").then(passSnap => {
+      const realPass = passSnap.val();
+      const input = prompt("パスワードを入力");
+
+      if (input === realPass) {
+        db.ref("threadAccess/" + id + "/" + currentUser.uid).set(true);
+        location.href = "thread.html?id=" + id;
+      } else {
+        alert("違います");
+      }
+    });
+  });
+}
+
+// 一覧
 db.ref("threads").on("value", snapshot => {
-  const threadsDiv = document.getElementById("threads");
-  threadsDiv.innerHTML = "";
+  const div = document.getElementById("threads");
+  div.innerHTML = "";
 
   snapshot.forEach(snap => {
     const data = snap.val();
     const id = snap.key;
 
-    if (!data || !data.title) return;
+    const box = document.createElement("div");
+    box.style.border = "1px solid #ccc";
+    box.style.margin = "5px";
+    box.style.padding = "5px";
 
-    const div = document.createElement("div");
-    div.style.border = "1px solid #ccc";
-    div.style.margin = "5px";
-    div.style.padding = "5px";
-
-    div.innerHTML = `
+    box.innerHTML = `
       <b>${data.title}</b><br>
-      作成者: ${data.ownerName || "名無し"}<br>
+      作成者: ${data.ownerName}<br>
       <button onclick="openThread('${id}')">開く</button>
     `;
 
-    threadsDiv.prepend(div);
+    div.prepend(box);
   });
 });
-
-function openThread(id) {
-  location.href = "thread.html?id=" + id;
-}
 </script>
 
 </body>
