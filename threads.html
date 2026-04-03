@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>スレッド一覧</title>
+</head>
+<body>
+
+<h2>スレッド一覧</h2>
+<div id="threads"></div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
+  authDomain: "aumkyou.firebaseapp.com",
+  databaseURL: "https://aumkyou-default-rtdb.firebaseio.com",
+  projectId: "aumkyou"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const auth = firebase.auth();
+
+auth.onAuthStateChanged(user => {
+  if (!user) location.href = "index.html";
+});
+
+// スレッド一覧取得
+db.ref("threads").on("value", snapshot => {
+  const div = document.getElementById("threads");
+  div.innerHTML = "";
+
+  snapshot.forEach(child => {
+    const uid = child.key;
+
+    db.ref("users/" + uid + "/displayName").once("value", snap => {
+      const name = snap.val() || "不明ユーザー";
+
+      const btn = document.createElement("button");
+      btn.innerText = name + " のスレッド";
+      btn.onclick = () => {
+        location.href = "thread.html?uid=" + uid;
+      };
+
+      div.appendChild(btn);
+      div.appendChild(document.createElement("br"));
+    });
+  });
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>スレッド</title>
+</head>
+<body>
+
+<h2 id="title"></h2>
+
+<input id="msg">
+<button onclick="send()">送信</button>
+
+<div id="chat"></div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
+  authDomain: "aumkyou.firebaseapp.com",
+  databaseURL: "https://aumkyou-default-rtdb.firebaseio.com",
+  projectId: "aumkyou"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const auth = firebase.auth();
+
+const urlParams = new URLSearchParams(location.search);
+const threadUID = urlParams.get("uid");
+
+let currentUser = null;
+
+// ログイン確認
+auth.onAuthStateChanged(user => {
+  if (!user) location.href = "index.html";
+  currentUser = user;
+});
+
+// タイトル表示
+db.ref("users/" + threadUID + "/displayName").once("value", snap => {
+  document.getElementById("title").innerText =
+    (snap.val() || "不明") + " のスレッド";
+});
+
+// 送信
+function send() {
+  const text = document.getElementById("msg").value;
+  if (!text) return;
+
+  const name = localStorage.getItem("displayName");
+
+  db.ref("threads/" + threadUID + "/messages").push({
+    uid: currentUser.uid,
+    name: name,
+    message: text,
+    time: new Date().toLocaleString()
+  });
+
+  document.getElementById("msg").value = "";
+}
+
+// 表示
+db.ref("threads/" + threadUID + "/messages").on("child_added", snap => {
+  const msg = snap.val();
+
+  const div = document.createElement("div");
+  div.innerText = `${msg.name}: ${msg.message}`;
+
+  document.getElementById("chat").prepend(div);
+});
+</script>
+
+</body>
+</html>
