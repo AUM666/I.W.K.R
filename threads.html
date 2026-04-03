@@ -49,8 +49,15 @@ let currentUser = null;
 
 // ログイン確認
 auth.onAuthStateChanged(user => {
-  if (!user) location.href = "index.html";
+  if (!user) {
+    location.href = "index.html";
+    return;
+  }
+
   currentUser = user;
+
+  // 🔥 ログイン後にスレ一覧を読み込む
+  loadThreads();
 });
 
 // 🔴 ログアウト
