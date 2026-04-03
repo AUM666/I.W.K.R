@@ -7,6 +7,14 @@
 <body>
 
 <h2>スレッド一覧</h2>
+
+<!-- ★ スレ作成欄（固定） -->
+<div style="border:1px solid #000; padding:10px; margin-bottom:10px;">
+  <h3>スレッド作成</h3>
+  <input id="titleInput" placeholder="タイトル">
+  <button onclick="createThread()">作成</button>
+</div>
+
 <div id="threads"></div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -25,32 +33,54 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
 
+let currentUser = null;
+
+// ログイン確認
 auth.onAuthStateChanged(user => {
   if (!user) location.href = "index.html";
+  currentUser = user;
 });
 
-// スレッド一覧取得
-db.ref("threads").on("value", snapshot => {
-  const div = document.getElementById("threads");
-  div.innerHTML = "";
+// ★ スレ作成
+function createThread() {
+  const title = document.getElementById("titleInput").value;
+  if (!title) return alert("タイトルを入力してください");
 
-  snapshot.forEach(child => {
-    const uid = child.key;
+  const name = localStorage.getItem("displayName");
 
-    db.ref("users/" + uid + "/displayName").once("value", snap => {
-      const name = snap.val() || "不明ユーザー";
-
-      const btn = document.createElement("button");
-      btn.innerText = name + " のスレッド";
-      btn.onclick = () => {
-        location.href = "thread.html?uid=" + uid;
-      };
-
-      div.appendChild(btn);
-      div.appendChild(document.createElement("br"));
-    });
+  const newThread = db.ref("threads").push();
+  newThread.set({
+    title: title,
+    owner: currentUser.uid,
+    ownerName: name,
+    createdAt: new Date().toLocaleString()
   });
+
+  document.getElementById("titleInput").value = "";
+}
+
+// ★ スレ一覧表示
+db.ref("threads").on("child_added", snap => {
+  const data = snap.val();
+  const id = snap.key;
+
+  const div = document.createElement("div");
+  div.style.border = "1px solid #ccc";
+  div.style.margin = "5px";
+  div.style.padding = "5px";
+
+  div.innerHTML = `
+    <b>${data.title}</b><br>
+    作成者: ${data.ownerName}<br>
+    <button onclick="openThread('${id}')">開く</button>
+  `;
+
+  document.getElementById("threads").prepend(div);
 });
+
+function openThread(id) {
+  location.href = "thread.html?id=" + id;
+}
 </script>
 
 </body>
