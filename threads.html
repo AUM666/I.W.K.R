@@ -8,6 +8,15 @@
 
 <h2>スレッド一覧</h2>
 
+<!-- 🔴 ログアウトボタン -->
+<button onclick="logout()" style="
+  position: fixed;
+  top: 10px;
+  right: 10px;
+">
+ログアウト
+</button>
+
 <div style="border:1px solid #000; padding:10px; margin-bottom:10px;">
   <h3>スレッド作成</h3>
   <input id="titleInput" placeholder="タイトル">
@@ -40,7 +49,17 @@ auth.onAuthStateChanged(user => {
   currentUser = user;
 });
 
-// スレ作成（1人1つ）
+// 🔴 ログアウト
+function logout() {
+  if (confirm("ログアウトしますか？")) {
+    auth.signOut().then(() => {
+      localStorage.clear(); // 名前など削除
+      location.href = "index.html";
+    });
+  }
+}
+
+// スレ作成
 function createThread() {
   const title = document.getElementById("titleInput").value.trim();
   if (!title) return alert("タイトルを入力してください");
@@ -53,7 +72,6 @@ function createThread() {
     ownerName: name,
     createdAt: new Date().toLocaleString()
   }).then(() => {
-    // 作成後すぐ移動
     location.href = "thread.html?id=" + currentUser.uid;
   }).catch(() => {
     alert("スレッドは1人1つまでです");
@@ -62,7 +80,7 @@ function createThread() {
   document.getElementById("titleInput").value = "";
 }
 
-// スレ一覧（確実表示）
+// スレ一覧
 db.ref("threads").on("value", snapshot => {
   const threadsDiv = document.getElementById("threads");
   threadsDiv.innerHTML = "";
