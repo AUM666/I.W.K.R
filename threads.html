@@ -40,7 +40,7 @@ auth.onAuthStateChanged(user => {
   currentUser = user;
 });
 
-// スレ作成（★UID固定）
+// ★ スレ作成（ここ修正済み）
 function createThread() {
   const title = document.getElementById("titleInput").value.trim();
   if (!title) return alert("タイトルを入力してください");
@@ -52,12 +52,14 @@ function createThread() {
     owner: currentUser.uid,
     ownerName: name,
     createdAt: new Date().toLocaleString()
-  }).catch(e => alert("作成できません（既に作成済みの可能性）"));
+  }).catch(e => {
+    alert("スレッドは1人1つまでです");
+  });
 
   document.getElementById("titleInput").value = "";
 }
 
-// スレ一覧
+// スレ一覧表示
 db.ref("threads").on("child_added", snap => {
   const data = snap.val();
   const id = snap.key;
