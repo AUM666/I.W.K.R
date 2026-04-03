@@ -2,20 +2,16 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>スレッド一覧</title>
+<title>スレッド</title>
 </head>
 <body>
 
-<h2>スレッド一覧</h2>
+<h2 id="title"></h2>
 
-<!-- ★ スレ作成欄（固定） -->
-<div style="border:1px solid #000; padding:10px; margin-bottom:10px;">
-  <h3>スレッド作成</h3>
-  <input id="titleInput" placeholder="タイトル">
-  <button onclick="createThread()">作成</button>
-</div>
+<input id="msg">
+<button onclick="send()">送信</button>
 
-<div id="threads"></div>
+<div id="chat"></div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -33,6 +29,9 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
 
+const params = new URLSearchParams(location.search);
+const threadId = params.get("id");
+
 let currentUser = null;
 
 // ログイン確認
@@ -41,46 +40,38 @@ auth.onAuthStateChanged(user => {
   currentUser = user;
 });
 
-// ★ スレ作成
-function createThread() {
-  const title = document.getElementById("titleInput").value;
-  if (!title) return alert("タイトルを入力してください");
+// タイトル表示
+db.ref("threads/" + threadId).once("value", snap => {
+  const data = snap.val();
+  document.getElementById("title").innerText = data.title;
+});
+
+// 送信
+function send() {
+  const text = document.getElementById("msg").value;
+  if (!text) return;
 
   const name = localStorage.getItem("displayName");
 
-  const newThread = db.ref("threads").push();
-  newThread.set({
-    title: title,
-    owner: currentUser.uid,
-    ownerName: name,
-    createdAt: new Date().toLocaleString()
+  db.ref("threads/" + threadId + "/messages").push({
+    uid: currentUser.uid,
+    name: name,
+    message: text,
+    time: new Date().toLocaleString()
   });
 
-  document.getElementById("titleInput").value = "";
+  document.getElementById("msg").value = "";
 }
 
-// ★ スレ一覧表示
-db.ref("threads").on("child_added", snap => {
-  const data = snap.val();
-  const id = snap.key;
+// 表示
+db.ref("threads/" + threadId + "/messages").on("child_added", snap => {
+  const msg = snap.val();
 
   const div = document.createElement("div");
-  div.style.border = "1px solid #ccc";
-  div.style.margin = "5px";
-  div.style.padding = "5px";
+  div.innerText = `${msg.name}: ${msg.message}`;
 
-  div.innerHTML = `
-    <b>${data.title}</b><br>
-    作成者: ${data.ownerName}<br>
-    <button onclick="openThread('${id}')">開く</button>
-  `;
-
-  document.getElementById("threads").prepend(div);
+  document.getElementById("chat").prepend(div);
 });
-
-function openThread(id) {
-  location.href = "thread.html?id=" + id;
-}
 </script>
 
 </body>
