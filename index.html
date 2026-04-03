@@ -55,11 +55,6 @@ function saveName() {
 
   localStorage.setItem("displayName", name);
 
-  // ★ スレッド作成（ここ重要）
-  db.ref("threads/" + currentUser.uid).update({
-    createdAt: new Date().toLocaleString()
-  });
-
   window.location.href = "threads.html";
 }
 
@@ -73,16 +68,6 @@ auth.onAuthStateChanged(user => {
 
       if (name) {
         localStorage.setItem("displayName", name);
-
-        // スレッドがなければ作る
-        db.ref("threads/" + user.uid).once("value", snap => {
-          if (!snap.exists()) {
-            db.ref("threads/" + user.uid).set({
-              createdAt: new Date().toLocaleString()
-            });
-          }
-        });
-
         window.location.href = "threads.html";
       } else {
         document.getElementById("nameBox").style.display = "block";
