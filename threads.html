@@ -147,11 +147,10 @@ function openThread(id) {
   return code;
 }
 
-  function joinByCode() {
+function joinByCode() {
   const code = document.getElementById("inviteInput").value.trim();
   if (!code) return alert("コードを入力");
 
-  // 🔥 inviteCodesから直接検索（安全＆高速）
   db.ref("inviteCodes/" + code).once("value").then(snapshot => {
 
     if (!snapshot.exists()) {
@@ -161,7 +160,7 @@ function openThread(id) {
 
     const threadId = snapshot.val();
 
-    // メンバー追加
+    // 🔥 これが超重要
     return db.ref("threads/" + threadId + "/members/" + currentUser.uid).set(true)
       .then(() => {
         alert("参加しました");
