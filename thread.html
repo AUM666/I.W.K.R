@@ -72,8 +72,7 @@ const threadId = params.get("id");
 const inviteToken = params.get("invite");
 
 let currentUser, fixedID, replyTo=null;
-let isOwner=false;
-let isAdmin=false;
+let isOwner=false, isAdmin=false;
 
 // ===== 戻る =====
 function goBack(){ location.href="threads.html"; }
@@ -86,15 +85,15 @@ function randomID(len=40){
   return r;
 }
 
-// ===== 日付 =====
+// ===== 時刻 =====
 function nowTime(){
-  const d = new Date();
+  const d=new Date();
   return d.getFullYear()+"/"+
-    ("0"+(d.getMonth()+1)).slice(-2)+"/"+
-    ("0"+d.getDate()).slice(-2)+" "+
-    ("0"+d.getHours()).slice(-2)+":"+
-    ("0"+d.getMinutes()).slice(-2)+":"+
-    ("0"+d.getSeconds()).slice(-2);
+  ("0"+(d.getMonth()+1)).slice(-2)+"/"+
+  ("0"+d.getDate()).slice(-2)+" "+
+  ("0"+d.getHours()).slice(-2)+":"+
+  ("0"+d.getMinutes()).slice(-2)+":"+
+  ("0"+d.getSeconds()).slice(-2);
 }
 
 // ===== システム表示 =====
@@ -125,24 +124,24 @@ function getYouTubeEmbedURL(url){
 auth.onAuthStateChanged(user=>{
   if(!user) return location.href="index.html";
 
-  currentUser = user;
+  currentUser=user;
 
   db.ref("admins/"+user.uid).once("value").then(snap=>{
-    isAdmin = snap.exists();
+    isAdmin=snap.exists();
   });
 
   db.ref("threads/"+threadId).once("value").then(snap=>{
-    const data = snap.val();
+    const data=snap.val();
     if(!data) return;
 
-    document.getElementById("title").innerText = data.title;
+    document.getElementById("title").innerText=data.title;
 
-    if(data.owner === user.uid){
-      isOwner = true;
+    if(data.owner===user.uid){
+      isOwner=true;
       document.getElementById("invitePanel").style.display="block";
     }
 
-    if(inviteToken && inviteToken === data.inviteToken){
+    if(inviteToken && inviteToken===data.inviteToken){
       db.ref("threadAccess/"+threadId+"/"+user.uid).set(true);
       history.replaceState({}, "", "?id="+threadId);
     }
@@ -161,27 +160,26 @@ auth.onAuthStateChanged(user=>{
 
 // ===== 開始 =====
 function start(){
-  const userRef = db.ref("users/"+currentUser.uid);
+  const userRef=db.ref("users/"+currentUser.uid);
 
   userRef.once("value").then(snap=>{
-    const d = snap.val()||{};
-    const name = d.displayName || currentUser.email;
+    const d=snap.val()||{};
+    const name=d.displayName||currentUser.email;
 
-    fixedID = d.fixedID || randomID(8);
-    userRef.update({displayName:name, fixedID});
+    fixedID=d.fixedID||randomID(8);
+    userRef.update({displayName:name,fixedID});
 
-    document.getElementById("status").innerText =
-      name+" ["+fixedID+"]";
+    document.getElementById("status").innerText=name+" ["+fixedID+"]";
 
-    // 入室
+    // 入室メッセージ
     db.ref("threads/"+threadId+"/messages").push({
       uid:"system",
       name:"システム",
       message:name+" が入室しました",
-      time: nowTime()
+      time:nowTime()
     });
 
-    // オンライン
+    // ===== オンライン =====
     const onlineRef = db.ref("threads/"+threadId+"/online/"+currentUser.uid);
     const connectedRef = db.ref(".info/connected");
 
@@ -192,28 +190,32 @@ function start(){
       }
     });
 
-    // オンライン表示
     db.ref("threads/"+threadId+"/online").on("value", snap=>{
-      const data = snap.val()||{};
-      const list = Object.values(data);
+      const data=snap.val()||{};
+      const list=Object.values(data);
 
-      document.getElementById("onlineCount").innerText = list.length;
+      document.getElementById("onlineCount").innerText=list.length;
 
       const box=document.getElementById("onlineUsers");
       box.innerHTML="";
       list.forEach(u=>{
         const div=document.createElement("div");
-        div.innerText = u.name+" ["+u.id+"]";
+        div.innerText=u.name+" ["+u.id+"]";
         box.appendChild(div);
       });
     });
 
-    // メッセージ表示
+    // ===== メッセージ =====
     db.ref("threads/"+threadId+"/messages").on("child_added", snap=>{
-      const msg = snap.val();
-      const key = snap.key;
+      const msg=snap.val();
+      const key=snap.key;
 
       const div=document.createElement("div");
+
+      div.style.position="relative";
+      div.style.margin="10px 0";
+      div.style.padding="10px";
+      div.style.borderRadius="10px";
 
       // 背景色
       if(msg.uid==="system"){
@@ -222,9 +224,11 @@ function start(){
         if(!showSystemMsg) div.style.display="none";
       }else if(msg.uid===currentUser.uid){
         div.style.background="#cce5ff";
+      }else{
+        div.style.background="#f1f1f1";
       }
 
-      // 内容
+      // 内容生成
       let content = msg.message;
 
       if(isImageURL(content)){
@@ -242,16 +246,23 @@ function start(){
         ${content}
       `;
 
-      // 返信（システムは不可）
-      if(msg.uid !== "system"){
+      // ===== ボタン右上 =====
+      const btnArea=document.createElement("div");
+      btnArea.style.position="absolute";
+      btnArea.style.top="5px";
+      btnArea.style.right="5px";
+
+      // 返信（システム禁止）
+      if(msg.uid!=="system"){
         const replyBtn=document.createElement("button");
         replyBtn.innerText="返信";
+        replyBtn.style.marginRight="8px";
         replyBtn.onclick=()=>{
           replyTo=msg;
           document.getElementById("replyBox").style.display="block";
           document.getElementById("replyText").innerText=msg.message;
         };
-        div.appendChild(replyBtn);
+        btnArea.appendChild(replyBtn);
       }
 
       // 削除
@@ -263,8 +274,10 @@ function start(){
             db.ref("threads/"+threadId+"/messages/"+key).remove();
           }
         };
-        div.appendChild(delBtn);
+        btnArea.appendChild(delBtn);
       }
+
+      div.appendChild(btnArea);
 
       document.getElementById("chat").prepend(div);
     });
@@ -289,8 +302,7 @@ function send(){
     uid:currentUser.uid,
     name:name,
     message:text,
-    reply: replyTo ? replyTo.message : null,
-    time: nowTime()
+    time:nowTime()
   });
 
   document.getElementById("msg").value="";
@@ -299,18 +311,18 @@ function send(){
 
 // ===== 招待 =====
 function createInvite(){
-  if(!isOwner) return;
+  if(!isOwner)return;
 
-  const token = randomID(40);
+  const token=randomID(40);
 
   db.ref("threads/"+threadId+"/inviteToken").set(token).then(()=>{
-    const url = location.origin + location.pathname + "?id="+threadId+"&invite="+token;
+    const url=location.origin+location.pathname+"?id="+threadId+"&invite="+token;
     document.getElementById("inviteLink").innerText=url;
   });
 }
 
 function deleteInvite(){
-  if(!isOwner) return;
+  if(!isOwner)return;
 
   db.ref("threads/"+threadId+"/inviteToken").remove().then(()=>{
     document.getElementById("inviteLink").innerText="削除しました";
