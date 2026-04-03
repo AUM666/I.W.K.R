@@ -6,7 +6,6 @@
 </head>
 <body>
 
-<!-- 戻る -->
 <button onclick="goBack()" style="position:fixed;top:10px;left:10px;z-index:1000;">
 ← スレ一覧
 </button>
@@ -19,15 +18,14 @@
     <h2 id="title"></h2>
     <p id="status"></p>
 
-    <!-- 招待リンク -->
+    <!-- 招待 -->
     <div id="invitePanel" style="display:none; border:1px solid #ccc; padding:5px;">
       <b>招待リンク</b><br>
       <button onclick="createInvite()">生成</button>
       <button onclick="deleteInvite()">削除</button>
-      <div id="inviteLink" style="word-break:break-all;"></div>
+      <div id="inviteLink"></div>
     </div>
 
-    <!-- システム表示 -->
     <label>
       <input type="checkbox" id="toggleSystemMsg">
       システムメッセージ表示
@@ -73,8 +71,9 @@ const params = new URLSearchParams(location.search);
 const threadId = params.get("id");
 const inviteToken = params.get("invite");
 
-let currentUser, fixedID, replyTo = null;
-let isOwner = false;
+let currentUser, fixedID, replyTo=null;
+let isOwner=false;
+let isAdmin=false;
 
 // ===== 戻る =====
 function goBack(){ location.href="threads.html"; }
@@ -85,6 +84,17 @@ function randomID(len=40){
   let r="";
   for(let i=0;i<len;i++) r+=c[Math.floor(Math.random()*c.length)];
   return r;
+}
+
+// ===== 日付 =====
+function nowTime(){
+  const d = new Date();
+  return d.getFullYear()+"/"+
+    ("0"+(d.getMonth()+1)).slice(-2)+"/"+
+    ("0"+d.getDate()).slice(-2)+" "+
+    ("0"+d.getHours()).slice(-2)+":"+
+    ("0"+d.getMinutes()).slice(-2)+":"+
+    ("0"+d.getSeconds()).slice(-2);
 }
 
 // ===== システム表示 =====
@@ -117,6 +127,10 @@ auth.onAuthStateChanged(user=>{
 
   currentUser = user;
 
+  db.ref("admins/"+user.uid).once("value").then(snap=>{
+    isAdmin = snap.exists();
+  });
+
   db.ref("threads/"+threadId).once("value").then(snap=>{
     const data = snap.val();
     if(!data) return;
@@ -128,7 +142,6 @@ auth.onAuthStateChanged(user=>{
       document.getElementById("invitePanel").style.display="block";
     }
 
-    // 招待
     if(inviteToken && inviteToken === data.inviteToken){
       db.ref("threadAccess/"+threadId+"/"+user.uid).set(true);
       history.replaceState({}, "", "?id="+threadId);
@@ -142,14 +155,12 @@ auth.onAuthStateChanged(user=>{
       location.href="threads.html";
       return;
     }
-
     start();
   });
 });
 
 // ===== 開始 =====
 function start(){
-
   const userRef = db.ref("users/"+currentUser.uid);
 
   userRef.once("value").then(snap=>{
@@ -160,14 +171,14 @@ function start(){
     userRef.update({displayName:name, fixedID});
 
     document.getElementById("status").innerText =
-      name + " ["+fixedID+"]";
+      name+" ["+fixedID+"]";
 
     // 入室
     db.ref("threads/"+threadId+"/messages").push({
       uid:"system",
       name:"システム",
       message:name+" が入室しました",
-      time:new Date().toLocaleString()
+      time: nowTime()
     });
 
     // オンライン
@@ -177,7 +188,7 @@ function start(){
     connectedRef.on("value", snap=>{
       if(snap.val()){
         onlineRef.onDisconnect().remove();
-        onlineRef.set({name:name, id:fixedID});
+        onlineRef.set({name:name,id:fixedID});
       }
     });
 
@@ -188,7 +199,7 @@ function start(){
 
       document.getElementById("onlineCount").innerText = list.length;
 
-      const box = document.getElementById("onlineUsers");
+      const box=document.getElementById("onlineUsers");
       box.innerHTML="";
       list.forEach(u=>{
         const div=document.createElement("div");
@@ -200,15 +211,20 @@ function start(){
     // メッセージ表示
     db.ref("threads/"+threadId+"/messages").on("child_added", snap=>{
       const msg = snap.val();
+      const key = snap.key;
 
       const div=document.createElement("div");
 
+      // 背景色
       if(msg.uid==="system"){
+        div.style.background="yellow";
         div.className="systemMsg";
         if(!showSystemMsg) div.style.display="none";
+      }else if(msg.uid===currentUser.uid){
+        div.style.background="#cce5ff";
       }
 
-      // 本文
+      // 内容
       let content = msg.message;
 
       if(isImageURL(content)){
@@ -217,21 +233,38 @@ function start(){
 
       const yt = getYouTubeEmbedURL(content);
       if(yt){
-        content = `<iframe width="300" height="200" src="${yt}" frameborder="0" allowfullscreen></iframe>`;
+        content = `<iframe width="300" height="200" src="${yt}" frameborder="0"></iframe>`;
       }
 
-      div.innerHTML = `<b>${msg.name}</b>: ${content}`;
+      div.innerHTML = `
+        <b>${msg.name}</b>
+        <small>${msg.time}</small><br>
+        ${content}
+      `;
 
-      // 返信ボタン
-      const btn = document.createElement("button");
-      btn.innerText="返信";
-      btn.onclick=()=>{
-        replyTo = msg;
-        document.getElementById("replyBox").style.display="block";
-        document.getElementById("replyText").innerText = msg.message;
-      };
+      // 返信（システムは不可）
+      if(msg.uid !== "system"){
+        const replyBtn=document.createElement("button");
+        replyBtn.innerText="返信";
+        replyBtn.onclick=()=>{
+          replyTo=msg;
+          document.getElementById("replyBox").style.display="block";
+          document.getElementById("replyText").innerText=msg.message;
+        };
+        div.appendChild(replyBtn);
+      }
 
-      div.appendChild(btn);
+      // 削除
+      if(msg.uid===currentUser.uid || isAdmin){
+        const delBtn=document.createElement("button");
+        delBtn.innerText="削除";
+        delBtn.onclick=()=>{
+          if(confirm("削除しますか？")){
+            db.ref("threads/"+threadId+"/messages/"+key).remove();
+          }
+        };
+        div.appendChild(delBtn);
+      }
 
       document.getElementById("chat").prepend(div);
     });
@@ -250,14 +283,14 @@ function send(){
   const text=document.getElementById("msg").value;
   if(!text)return;
 
-  const name = document.getElementById("status").innerText;
+  const name=document.getElementById("status").innerText;
 
   db.ref("threads/"+threadId+"/messages").push({
     uid:currentUser.uid,
     name:name,
     message:text,
     reply: replyTo ? replyTo.message : null,
-    time:new Date().toLocaleString()
+    time: nowTime()
   });
 
   document.getElementById("msg").value="";
@@ -283,7 +316,6 @@ function deleteInvite(){
     document.getElementById("inviteLink").innerText="削除しました";
   });
 }
-
 </script>
 </body>
 </html>
