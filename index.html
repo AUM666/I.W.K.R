@@ -1,3 +1,5 @@
+index.html
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -60,29 +62,24 @@ function saveName() {
 
 // 状態監視
 auth.onAuthStateChanged(user => {
+  if (user) {
+    currentUser = user;
 
-  // ログインしてない時は何もしない（重要）
-  if (!user) {
-    document.getElementById("status").innerText = "ログインしてください";
-    return;
+    db.ref("users/" + user.uid + "/displayName").once("value", snapshot => {
+      const name = snapshot.val();
+
+      if (name) {
+        localStorage.setItem("displayName", name);
+        window.location.href = "threads.html";
+      } else {
+        document.getElementById("nameBox").style.display = "block";
+        document.getElementById("status").innerText = "名前を設定してください";
+      }
+    });
+
+  } else {
+    document.getElementById("status").innerText = "未ログイン";
   }
-
-  // ログイン済みだけ処理
-  db.ref("users/" + user.uid + "/displayName").once("value")
-  .then(snap => {
-
-    const name = snap.val();
-
-    if (name) {
-      localStorage.setItem("displayName", name);
-      location.href = "threads.html";
-    } else {
-      document.getElementById("nameBox").style.display = "block";
-      document.getElementById("status").innerText = "名前を設定してください";
-    }
-
-  });
-
 });
 </script>
 
