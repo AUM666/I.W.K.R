@@ -40,7 +40,7 @@ auth.onAuthStateChanged(user => {
   currentUser = user;
 });
 
-// ★ スレ作成（ここ修正済み）
+// スレ作成（1人1つ）
 function createThread() {
   const title = document.getElementById("titleInput").value.trim();
   if (!title) return alert("タイトルを入力してください");
@@ -52,40 +52,45 @@ function createThread() {
     owner: currentUser.uid,
     ownerName: name,
     createdAt: new Date().toLocaleString()
-  }).catch(e => {
+  }).then(() => {
+    // 作成後すぐ移動
+    location.href = "thread.html?id=" + currentUser.uid;
+  }).catch(() => {
     alert("スレッドは1人1つまでです");
   });
 
   document.getElementById("titleInput").value = "";
 }
 
-// スレ一覧表示
-db.ref("threads").on("child_added", snap => {
-  const data = snap.val();
-  const id = snap.key;
+// スレ一覧（確実表示）
+db.ref("threads").on("value", snapshot => {
+  const threadsDiv = document.getElementById("threads");
+  threadsDiv.innerHTML = "";
 
-  if (!data || !data.title) return;
+  snapshot.forEach(snap => {
+    const data = snap.val();
+    const id = snap.key;
 
-  const div = document.createElement("div");
-  div.style.border = "1px solid #ccc";
-  div.style.margin = "5px";
-  div.style.padding = "5px";
+    if (!data || !data.title) return;
 
-  div.innerHTML = `
-    <b>${data.title}</b><br>
-    作成者: ${data.ownerName || "名無し"}<br>
-    <button onclick="openThread('${id}')">開く</button>
-  `;
+    const div = document.createElement("div");
+    div.style.border = "1px solid #ccc";
+    div.style.margin = "5px";
+    div.style.padding = "5px";
 
-  document.getElementById("threads").prepend(div);
+    div.innerHTML = `
+      <b>${data.title}</b><br>
+      作成者: ${data.ownerName || "名無し"}<br>
+      <button onclick="openThread('${id}')">開く</button>
+    `;
+
+    threadsDiv.prepend(div);
+  });
 });
 
 function openThread(id) {
   location.href = "thread.html?id=" + id;
 }
-
-console.log("threads data:", data);
-  
 </script>
 
 </body>
