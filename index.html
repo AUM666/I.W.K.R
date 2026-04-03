@@ -38,15 +38,13 @@ const db = firebase.database();
 
 let currentUser = null;
 
-// ===== Googleログイン =====
+// Googleログイン
 function googleLogin() {
   const provider = new firebase.auth.GoogleAuthProvider();
-
-  auth.signInWithPopup(provider)
-    .catch(e => alert(e.message));
+  auth.signInWithPopup(provider).catch(e => alert(e.message));
 }
 
-// ===== 名前保存 =====
+// 名前保存
 function saveName() {
   const name = document.getElementById("nameInput").value;
   if (!name) return alert("名前を入力してください");
@@ -57,10 +55,15 @@ function saveName() {
 
   localStorage.setItem("displayName", name);
 
-  window.location.href = "chat.html";
+  // ★ スレッド作成（ここ重要）
+  db.ref("threads/" + currentUser.uid).update({
+    createdAt: new Date().toLocaleString()
+  });
+
+  window.location.href = "threads.html";
 }
 
-// ===== 状態監視 =====
+// 状態監視
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
@@ -69,11 +72,19 @@ auth.onAuthStateChanged(user => {
       const name = snapshot.val();
 
       if (name) {
-        // 既に名前ある → そのままチャットへ
         localStorage.setItem("displayName", name);
-        window.location.href = "chat.html";
+
+        // スレッドがなければ作る
+        db.ref("threads/" + user.uid).once("value", snap => {
+          if (!snap.exists()) {
+            db.ref("threads/" + user.uid).set({
+              createdAt: new Date().toLocaleString()
+            });
+          }
+        });
+
+        window.location.href = "threads.html";
       } else {
-        // 名前未設定 → 入力画面表示
         document.getElementById("nameBox").style.display = "block";
         document.getElementById("status").innerText = "名前を設定してください";
       }
