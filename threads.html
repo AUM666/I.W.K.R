@@ -8,7 +8,12 @@
 
 <h2>スレッド一覧</h2>
 
-<button onclick="logout()" style="position: fixed; top:10px; right:10px;">
+<!-- 🔴 ログアウトボタン -->
+<button onclick="logout()" style="
+  position: fixed;
+  top: 10px;
+  right: 10px;
+">
 ログアウト
 </button>
 
@@ -17,6 +22,10 @@
   <input id="titleInput" placeholder="タイトル">
   <button onclick="createThread()">作成</button>
 </div>
+  <hr>
+<h3>招待コードで参加</h3>
+<input id="inviteInput" placeholder="招待コード">
+<button onclick="joinByCode()">参加</button>
 
 <div id="threads"></div>
 
@@ -26,7 +35,7 @@
 
 <script>
 const firebaseConfig = {
-  apiKey: "AIza...",
+  apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
   authDomain: "aumkyou.firebaseapp.com",
   databaseURL: "https://aumkyou-default-rtdb.firebaseio.com",
   projectId: "aumkyou"
@@ -36,103 +45,123 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
 
-let currentUser;
+let currentUser = null;
 
-// ===== ログイン =====
-let authChecked = false;
-
+// ログイン確認
 auth.onAuthStateChanged(user => {
-
-  if (authChecked) return;
-  authChecked = true;
-
-  if (!user) {
-    location.href = "index.html";
-    return;
-  }
-
+  if (!user) location.href = "index.html";
   currentUser = user;
-  loadThreads();
 });
 
-// ===== ランダムID =====
-function randomID(len=12){
-  const c="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let r="";
-  for(let i=0;i<len;i++) r+=c[Math.floor(Math.random()*c.length)];
-  return r;
+// 🔴 ログアウト
+function logout() {
+  if (confirm("ログアウトしますか？")) {
+    auth.signOut().then(() => {
+      localStorage.clear(); // 名前など削除
+      location.href = "index.html";
+    });
+  }
 }
 
-// ===== スレ作成 =====
+// スレ作成
 function createThread() {
   const title = document.getElementById("titleInput").value.trim();
-  if (!title) return alert("タイトルを入力");
+  if (!title) return alert("タイトルを入力してください");
 
   const name = localStorage.getItem("displayName") || "名無し";
-  const id = randomID();
+  const inviteCode = generateInviteCode();
 
-  db.ref("threads/" + id).set({
-    title,
+  const threadRef = db.ref("threads/" + currentUser.uid);
+
+  threadRef.set({
+    title: title,
     owner: currentUser.uid,
     ownerName: name,
     createdAt: new Date().toLocaleString(),
-    inviteToken: null
+    inviteCode: inviteCode,
+    members: {
+      [currentUser.uid]: true
+    }
   }).then(() => {
 
-    // 🔥 必須2つ
-    db.ref("threadAccess/" + id + "/" + currentUser.uid).set(true);
-    db.ref("users/" + currentUser.uid + "/threads/" + id).set(true);
+    // 🔥 inviteCodesに登録（ここ重要）
+    return db.ref("inviteCodes/" + inviteCode).set(currentUser.uid);
 
-    location.href = "thread.html?id=" + id;
+  }).then(() => {
+
+    alert("招待コード:\n" + inviteCode);
+    location.href = "thread.html?id=" + currentUser.uid;
+
+  }).catch(() => {
+    alert("作成失敗");
   });
+
+  document.getElementById("titleInput").value = "";
 }
 
-// ===== 一覧 =====
-function loadThreads() {
+// スレ一覧
+db.ref("threads").on("value", snapshot => {
+  const threadsDiv = document.getElementById("threads");
+  threadsDiv.innerHTML = "";
 
-  const div = document.getElementById("threads");
+  snapshot.forEach(snap => {
+    const data = snap.val();
+    const id = snap.key;
 
-  db.ref("users/" + currentUser.uid + "/threads").on("value", async snapshot => {
+    if (!data || !data.title) return;
 
-    div.innerHTML = "";
+    // 🔒 メンバーのみ表示
+    if (!data.members || !data.members[currentUser.uid]) return;
 
-    if (!snapshot.exists()) {
-      div.innerText = "参加中のスレッドはありません";
-      return;
-    }
+    const div = document.createElement("div");
+    div.style.border = "1px solid #ccc";
+    div.style.margin = "5px";
+    div.style.padding = "5px";
 
-    const promises = [];
+    div.innerHTML = `
+      <b>${data.title}</b><br>
+      作成者: ${data.ownerName || "名無し"}<br>
+      <button onclick="openThread('${id}')">開く</button>
+    `;
 
-    snapshot.forEach(child => {
-      const threadId = child.key;
-
-      const p = db.ref("threads/" + threadId).once("value").then(snap => {
-        const data = snap.val();
-        if (!data) return;
-
-        const box = document.createElement("div");
-        box.style.border = "1px solid #ccc";
-        box.style.margin = "5px";
-        box.style.padding = "5px";
-
-        box.innerHTML = `
-          <b>${data.title}</b><br>
-          作成者: ${data.ownerName}<br>
-          <button onclick="openThread('${threadId}')">開く</button>
-        `;
-
-        div.prepend(box);
-      });
-
-      promises.push(p);
-    });
-
-    await Promise.all(promises);
+    threadsDiv.prepend(div);
   });
-}
+});
 
 function openThread(id) {
   location.href = "thread.html?id=" + id;
+}
+  function generateInviteCode(length = 20) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let code = '';
+  for (let i = 0; i < length; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+  function joinByCode() {
+  const code = document.getElementById("inviteInput").value.trim();
+  if (!code) return alert("コードを入力");
+
+  // 🔥 inviteCodesから直接検索（安全＆高速）
+  db.ref("inviteCodes/" + code).once("value").then(snapshot => {
+
+    if (!snapshot.exists()) {
+      alert("無効なコード");
+      return;
+    }
+
+    const threadId = snapshot.val();
+
+    // メンバー追加
+    return db.ref("threads/" + threadId + "/members/" + currentUser.uid).set(true)
+      .then(() => {
+        alert("参加しました");
+        location.href = "thread.html?id=" + threadId;
+      });
+
+  });
 }
 </script>
 
