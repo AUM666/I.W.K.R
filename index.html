@@ -61,11 +61,13 @@ function saveName() {
 // 状態監視
 auth.onAuthStateChanged(user => {
 
+  // ログインしてない時は何もしない（重要）
   if (!user) {
-    document.getElementById("status").innerText = "未ログイン";
+    document.getElementById("status").innerText = "ログインしてください";
     return;
   }
 
+  // ログイン済みだけ処理
   db.ref("users/" + user.uid + "/displayName").once("value")
   .then(snap => {
 
