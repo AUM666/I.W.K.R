@@ -136,6 +136,15 @@ auth.onAuthStateChanged(user=>{
 
     document.getElementById("title").innerText=data.title;
 
+    if (inviteToken && data.inviteToken === inviteToken) {
+
+  // 🔥 両方登録
+  db.ref("threadAccess/" + threadId + "/" + user.uid).set(true);
+  db.ref("users/" + user.uid + "/threads/" + threadId).set(true);
+
+  history.replaceState({}, "", "thread.html?id=" + threadId);
+}
+    
     if(data.owner===user.uid){
       isOwner=true;
       document.getElementById("invitePanel").style.display="block";
