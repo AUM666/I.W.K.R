@@ -26,7 +26,7 @@
 
 <script>
 const firebaseConfig = {
-  apiKey: "AIzaSyDGNWiE3Q96vKK4tMRWo3tvHAEqXOZOyLM",
+  apiKey: "AIza...",
   authDomain: "aumkyou.firebaseapp.com",
   databaseURL: "https://aumkyou-default-rtdb.firebaseio.com",
   projectId: "aumkyou"
@@ -36,13 +36,12 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const auth = firebase.auth();
 
-let currentUser = null;
+let currentUser;
 
-// ===== ログイン確認 =====
+// ===== ログイン =====
 auth.onAuthStateChanged(user => {
   if (!user) return location.href = "index.html";
   currentUser = user;
-
   loadThreads();
 });
 
@@ -78,62 +77,58 @@ function createThread() {
     inviteToken: null
   }).then(() => {
 
-    // 作成者は必ず入れる
+    // 🔥 必須2つ
     db.ref("threadAccess/" + id + "/" + currentUser.uid).set(true);
+    db.ref("users/" + currentUser.uid + "/threads/" + id).set(true);
 
     location.href = "thread.html?id=" + id;
   });
 }
 
-// ===== スレ一覧（超安定版） =====
+// ===== 一覧 =====
 function loadThreads() {
 
-  const threadsDiv = document.getElementById("threads");
+  const div = document.getElementById("threads");
 
-  db.ref("threadAccess").on("value", snapshot => {
+  db.ref("users/" + currentUser.uid + "/threads").on("value", async snapshot => {
 
-    threadsDiv.innerHTML = "";
+    div.innerHTML = "";
 
-    if (!snapshot.exists()) return;
+    if (!snapshot.exists()) {
+      div.innerText = "参加中のスレッドはありません";
+      return;
+    }
 
     const promises = [];
 
-    snapshot.forEach(threadSnap => {
+    snapshot.forEach(child => {
+      const threadId = child.key;
 
-      const threadId = threadSnap.key;
-
-      // 自分が入れるスレだけ
-      if (!threadSnap.hasChild(currentUser.uid)) return;
-
-      // スレ情報取得
       const p = db.ref("threads/" + threadId).once("value").then(snap => {
-
         const data = snap.val();
         if (!data) return;
 
-        const div = document.createElement("div");
-        div.style.border = "1px solid #ccc";
-        div.style.margin = "5px";
-        div.style.padding = "5px";
+        const box = document.createElement("div");
+        box.style.border = "1px solid #ccc";
+        box.style.margin = "5px";
+        box.style.padding = "5px";
 
-        div.innerHTML = `
+        box.innerHTML = `
           <b>${data.title}</b><br>
           作成者: ${data.ownerName}<br>
           <button onclick="openThread('${threadId}')">開く</button>
         `;
 
-        threadsDiv.prepend(div);
+        div.prepend(box);
       });
 
       promises.push(p);
     });
 
-    // 全部読み込んでから表示（チラつき防止）
-    Promise.all(promises);
+    await Promise.all(promises);
   });
 }
 
-// ===== 開く =====
 function openThread(id) {
   location.href = "thread.html?id=" + id;
 }
