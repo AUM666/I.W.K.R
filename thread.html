@@ -121,14 +121,50 @@ function getYouTubeEmbedURL(url){
 }
 
 // ===== 認証 =====
-auth.onAuthStateChanged(user=>{
-  if(!user) return location.href="index.html";
+auth.onAuthStateChanged(user => {
 
-  currentUser=user;
+  // ===== 未ログインだけ弾く =====
+  if (!user) {
+    location.href = "index.html";
+    return;
+  }
 
-  db.ref("admins/"+user.uid).once("value").then(snap=>{
-    isAdmin=snap.exists();
+  currentUser = user;
+
+  db.ref("threads/" + threadId).once("value").then(snap => {
+    const data = snap.val();
+
+    // スレ存在チェック
+    if (!data) {
+      alert("スレッドが存在しません");
+      return;
+    }
+
+    // ===== 🔑 招待リンク処理（ここが超重要） =====
+    if (inviteToken && data.inviteToken === inviteToken) {
+
+      db.ref("threadAccess/" + threadId + "/" + user.uid).set(true);
+      db.ref("users/" + user.uid + "/threads/" + threadId).set(true);
+
+      history.replaceState({}, "", "thread.html?id=" + threadId);
+    }
+
+    // ===== アクセス確認 =====
+    return db.ref("threadAccess/" + threadId + "/" + user.uid).once("value");
+  })
+  .then(accessSnap => {
+
+    // ❌ リダイレクトしない
+    if (!accessSnap || !accessSnap.exists()) {
+      alert("このスレッドには入れません");
+      return;
+    }
+
+    // ===== 正常なら開始 =====
+    startApp();
   });
+
+});
 
   db.ref("threads/"+threadId).once("value").then(snap=>{
     const data=snap.val();
