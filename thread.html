@@ -8,6 +8,13 @@
 
 <h2 id="title"></h2>
 
+<p id="status"></p>
+
+<div id="replyBox" style="display:none; background:#eee; padding:5px;">
+  <span id="replyText"></span>
+  <button onclick="cancelReply()">×</button>
+</div>
+
 <input id="msg">
 <button onclick="send()">送信</button>
 
@@ -33,21 +40,86 @@ const params = new URLSearchParams(location.search);
 const threadId = params.get("id");
 
 let currentUser = null;
+let fixedID = null;
+let replyTo = null;
+let isAdmin = false;
 
-// ログイン確認
+// ===== 画像判定 =====
+function isImageURL(text) {
+  return /(https?:\/\/.*\.(png|jpg|jpeg|gif|webp))/i.test(text);
+}
+
+// ===== YouTube =====
+function getYouTubeEmbedURL(url) {
+  const reg = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/;
+  const match = url.match(reg);
+  if (match) return "https://www.youtube.com/embed/" + match[1];
+  return null;
+}
+
+// ===== ID生成 =====
+function generateRandomID(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < length; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+}
+
+// ===== ログイン =====
 auth.onAuthStateChanged(user => {
   if (!user) location.href = "index.html";
+
   currentUser = user;
+
+  const userRef = db.ref("users/" + user.uid);
+
+  // 管理者判定
+  db.ref("admins/" + user.uid).once("value").then(snap => {
+    isAdmin = snap.exists();
+  });
+
+  userRef.once("value").then(snap => {
+    const data = snap.val() || {};
+
+    const name = data.displayName || user.email;
+    localStorage.setItem("displayName", name);
+
+    fixedID = data.fixedID || generateRandomID(8);
+
+    userRef.update({
+      displayName: name,
+      fixedID: fixedID
+    });
+
+    document.getElementById("status").innerText =
+      `${name} [${fixedID}]`;
+  });
 });
 
-// タイトル表示
+// ===== タイトル =====
 db.ref("threads/" + threadId).once("value", snap => {
   const data = snap.val();
   document.getElementById("title").innerText = data.title;
 });
 
-// 送信
+// ===== 返信 =====
+function setReply(msg) {
+  replyTo = msg;
+  document.getElementById("replyBox").style.display = "block";
+  document.getElementById("replyText").innerText =
+    `${msg.name}: ${msg.message}`;
+}
+function cancelReply() {
+  replyTo = null;
+  document.getElementById("replyBox").style.display = "none";
+}
+
+// ===== 送信 =====
 function send() {
+  if (!currentUser) return;
+
   const text = document.getElementById("msg").value;
   if (!text) return;
 
@@ -55,20 +127,115 @@ function send() {
 
   db.ref("threads/" + threadId + "/messages").push({
     uid: currentUser.uid,
-    name: name,
+    name: `${name} [${fixedID}]`,
     message: text,
-    time: new Date().toLocaleString()
+    time: new Date().toLocaleString(),
+    reply: replyTo ? {
+      name: replyTo.name,
+      message: replyTo.message
+    } : null
   });
 
   document.getElementById("msg").value = "";
+  cancelReply();
 }
 
-// 表示
-db.ref("threads/" + threadId + "/messages").on("child_added", snap => {
-  const msg = snap.val();
+// ===== 表示 =====
+db.ref("threads/" + threadId + "/messages").on("child_added", data => {
+  const msg = data.val();
+  const key = data.key;
 
   const div = document.createElement("div");
-  div.innerText = `${msg.name}: ${msg.message}`;
+  div.style.padding = "5px";
+  div.style.margin = "3px 0";
+  div.style.borderRadius = "5px";
+
+  if (msg.uid === currentUser?.uid) {
+    div.style.background = "#d0ebff";
+  } else {
+    div.style.background = "#f0f0f0";
+  }
+
+  const header = document.createElement("div");
+  header.style.display = "flex";
+  header.style.justifyContent = "space-between";
+
+  const info = document.createElement("span");
+  info.innerHTML = `<b>${msg.name}</b> [${msg.time}]`;
+  header.appendChild(info);
+
+  const btnArea = document.createElement("div");
+
+  // 返信
+  const replyBtn = document.createElement("button");
+  replyBtn.innerText = "返信";
+  replyBtn.onclick = () => setReply(msg);
+  btnArea.appendChild(replyBtn);
+
+  // 削除（自分 or 管理者）
+  if (msg.uid === currentUser?.uid || isAdmin) {
+    const delBtn = document.createElement("button");
+    delBtn.innerText = "削除";
+    delBtn.onclick = () => {
+      if (confirm("削除しますか？")) {
+        db.ref("threads/" + threadId + "/messages/" + key).remove();
+      }
+    };
+    btnArea.appendChild(delBtn);
+  }
+
+  header.appendChild(btnArea);
+
+  const body = document.createElement("div");
+
+  // 返信表示
+  if (msg.reply) {
+    const r = document.createElement("div");
+    r.style.background = "#ddd";
+    r.style.fontSize = "12px";
+    r.innerText = `↪ ${msg.reply.name}: ${msg.reply.message}`;
+    body.appendChild(r);
+  }
+
+  // メッセージ解析
+  const parts = msg.message.split(/\s+/);
+
+  parts.forEach(part => {
+
+    if (isImageURL(part)) {
+      const img = document.createElement("img");
+      img.src = part;
+      img.style.maxWidth = "200px";
+      img.style.display = "block";
+      body.appendChild(img);
+    }
+
+    else if (getYouTubeEmbedURL(part)) {
+      const iframe = document.createElement("iframe");
+      iframe.src = getYouTubeEmbedURL(part);
+      iframe.width = "300";
+      iframe.height = "170";
+      iframe.style.border = "none";
+      iframe.allowFullscreen = true;
+      iframe.style.display = "block";
+      body.appendChild(iframe);
+    }
+
+    else {
+      const span = document.createElement("span");
+      span.innerText = part + " ";
+      body.appendChild(span);
+    }
+
+  });
+
+  div.appendChild(header);
+  div.appendChild(body);
+
+  // 削除同期
+  db.ref("threads/" + threadId + "/messages/" + key).on("value", snap => {
+    if (!snap.exists()) div.remove();
+  });
 
   document.getElementById("chat").prepend(div);
 });
