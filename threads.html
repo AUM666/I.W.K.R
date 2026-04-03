@@ -39,19 +39,21 @@ const auth = firebase.auth();
 let currentUser;
 
 // ===== ログイン =====
+let authChecked = false;
+
 auth.onAuthStateChanged(user => {
-  if (!user) return location.href = "index.html";
+
+  if (authChecked) return;
+  authChecked = true;
+
+  if (!user) {
+    location.href = "index.html";
+    return;
+  }
+
   currentUser = user;
   loadThreads();
 });
-
-// ===== ログアウト =====
-function logout() {
-  auth.signOut().then(() => {
-    localStorage.clear();
-    location.href = "index.html";
-  });
-}
 
 // ===== ランダムID =====
 function randomID(len=12){
