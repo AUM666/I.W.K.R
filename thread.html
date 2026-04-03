@@ -6,13 +6,8 @@
 </head>
 <body>
 
-<!-- 🔙 戻るボタン（固定表示） -->
-<button onclick="goBack()" style="
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  z-index: 1000;
-">
+<!-- 戻る -->
+<button onclick="goBack()" style="position: fixed; top:10px; left:10px;">
 ← スレ一覧
 </button>
 
@@ -72,7 +67,7 @@ let fixedID = null;
 let replyTo = null;
 let isAdmin = false;
 
-// ===== 戻る =====
+// 戻る
 function goBack() {
   location.href = "threads.html";
 }
@@ -110,55 +105,73 @@ function generateRandomID(length = 8) {
   return id;
 }
 
-// ===== ログイン =====
+// ===== 🔒 ログイン & アクセスチェック =====
 auth.onAuthStateChanged(user => {
-  if (!user) location.href = "index.html";
+  if (!user) {
+    location.href = "index.html";
+    return;
+  }
 
-  currentUser = user;
+  // 🔴 アクセス権チェック
+  db.ref("threadAccess/" + threadId + "/" + user.uid).once("value")
+  .then(accessSnap => {
 
-  db.ref("admins/" + user.uid).once("value").then(snap => {
-    isAdmin = snap.exists();
-  });
+    if (!accessSnap.exists()) {
+      alert("このスレッドには入れません");
+      location.href = "threads.html";
+      return;
+    }
 
-  const userRef = db.ref("users/" + user.uid);
+    currentUser = user;
 
-  userRef.once("value").then(snap => {
-    const data = snap.val() || {};
-
-    const name = data.displayName || user.email;
-    localStorage.setItem("displayName", name);
-
-    fixedID = data.fixedID || generateRandomID(8);
-
-    userRef.update({ displayName: name, fixedID: fixedID });
-
-    document.getElementById("status").innerText =
-      `${name} [${fixedID}]`;
-
-    // 入室メッセージ
-    db.ref("threads/" + threadId + "/messages").push({
-      uid: "system",
-      name: "システム",
-      message: `${name} が入室しました`,
-      time: new Date().toLocaleString()
+    // 管理者判定
+    db.ref("admins/" + user.uid).once("value").then(snap => {
+      isAdmin = snap.exists();
     });
 
-    // オンライン
-    const onlineRef = db.ref("threads/" + threadId + "/online/" + user.uid);
-    const connectedRef = db.ref(".info/connected");
+    const userRef = db.ref("users/" + user.uid);
 
-    connectedRef.on("value", snap => {
-      if (snap.val() === true) {
-        onlineRef.onDisconnect().remove();
-        onlineRef.set({ name: name, id: fixedID });
-      }
+    userRef.once("value").then(snap => {
+      const data = snap.val() || {};
+
+      const name = data.displayName || user.email;
+      localStorage.setItem("displayName", name);
+
+      fixedID = data.fixedID || generateRandomID(8);
+      userRef.update({ displayName: name, fixedID: fixedID });
+
+      document.getElementById("status").innerText =
+        `${name} [${fixedID}]`;
+
+      // 入室メッセージ
+      db.ref("threads/" + threadId + "/messages").push({
+        uid: "system",
+        name: "システム",
+        message: `${name} が入室しました`,
+        time: new Date().toLocaleString()
+      });
+
+      // オンライン状態
+      const onlineRef = db.ref("threads/" + threadId + "/online/" + user.uid);
+      const connectedRef = db.ref(".info/connected");
+
+      connectedRef.on("value", snap => {
+        if (snap.val() === true) {
+          onlineRef.onDisconnect().remove();
+          onlineRef.set({ name: name, id: fixedID });
+        }
+      });
+
+      // タイトル取得
+      db.ref("threads/" + threadId).once("value", snap => {
+        document.getElementById("title").innerText = snap.val().title;
+      });
+
+      // メッセージ読み込み開始
+      loadMessages();
+      loadOnlineUsers();
     });
   });
-});
-
-// ===== タイトル =====
-db.ref("threads/" + threadId).once("value", snap => {
-  document.getElementById("title").innerText = snap.val().title;
 });
 
 // ===== 返信 =====
@@ -168,6 +181,7 @@ function setReply(msg) {
   document.getElementById("replyText").innerText =
     `${msg.name}: ${msg.message}`;
 }
+
 function cancelReply() {
   replyTo = null;
   document.getElementById("replyBox").style.display = "none";
@@ -195,120 +209,124 @@ function send() {
   cancelReply();
 }
 
-// ===== 表示 =====
-db.ref("threads/" + threadId + "/messages").on("child_added", data => {
-  const msg = data.val();
-  const key = data.key;
-
-  const div = document.createElement("div");
-  div.style.padding = "5px";
-  div.style.margin = "3px 0";
-  div.style.borderRadius = "5px";
-
-  if (msg.uid === currentUser?.uid) {
-    div.style.background = "#d0ebff";
-  } else if (msg.uid === "system") {
-    div.style.background = "#ffeebb";
-    div.classList.add("systemMsg");
-    if (!showSystemMsg) div.style.display = "none";
-  } else {
-    div.style.background = "#f0f0f0";
-  }
-
-  const header = document.createElement("div");
-  header.style.display = "flex";
-  header.style.justifyContent = "space-between";
-
-  const info = document.createElement("span");
-  info.innerHTML = `<b>${msg.name}</b> [${msg.time}]`;
-  header.appendChild(info);
-
-  const btnArea = document.createElement("div");
-
-  if (msg.uid !== "system") {
-    const replyBtn = document.createElement("button");
-    replyBtn.innerText = "返信";
-    replyBtn.onclick = () => setReply(msg);
-    btnArea.appendChild(replyBtn);
-  }
-
-  if (msg.uid === currentUser?.uid || isAdmin) {
-    const delBtn = document.createElement("button");
-    delBtn.innerText = "削除";
-    delBtn.onclick = () => {
-      if (confirm("削除しますか？")) {
-        db.ref("threads/" + threadId + "/messages/" + key).remove();
-      }
-    };
-    btnArea.appendChild(delBtn);
-  }
-
-  header.appendChild(btnArea);
-
-  const body = document.createElement("div");
-
-  if (msg.reply) {
-    const r = document.createElement("div");
-    r.style.background = "#ddd";
-    r.style.fontSize = "12px";
-    r.innerText = `↪ ${msg.reply.name}: ${msg.reply.message}`;
-    body.appendChild(r);
-  }
-
-  const parts = msg.message.split(/\s+/);
-
-  parts.forEach(part => {
-    if (isImageURL(part)) {
-      const img = document.createElement("img");
-      img.src = part;
-      img.style.maxWidth = "200px";
-      img.style.display = "block";
-      body.appendChild(img);
-    } else if (getYouTubeEmbedURL(part)) {
-      const iframe = document.createElement("iframe");
-      iframe.src = getYouTubeEmbedURL(part);
-      iframe.width = "300";
-      iframe.height = "170";
-      iframe.style.border = "none";
-      iframe.allowFullscreen = true;
-      iframe.style.display = "block";
-      body.appendChild(iframe);
-    } else {
-      const span = document.createElement("span");
-      span.innerText = part + " ";
-      body.appendChild(span);
-    }
-  });
-
-  div.appendChild(header);
-  div.appendChild(body);
-
-  db.ref("threads/" + threadId + "/messages/" + key).on("value", snap => {
-    if (!snap.exists()) div.remove();
-  });
-
-  document.getElementById("chat").prepend(div);
-});
-
-// ===== オンライン =====
-const onlineDiv = document.getElementById("onlineUsers");
-const onlineCount = document.getElementById("onlineCount");
-
-db.ref("threads/" + threadId + "/online").on("value", snapshot => {
-  onlineDiv.innerHTML = "";
-  let count = 0;
-
-  snapshot.forEach(child => {
-    const user = child.val();
-    count++;
+// ===== メッセージ表示 =====
+function loadMessages() {
+  db.ref("threads/" + threadId + "/messages").on("child_added", data => {
+    const msg = data.val();
+    const key = data.key;
 
     const div = document.createElement("div");
-    div.innerText = `${user.name} [${user.id}]`;
-    onlineDiv.appendChild(div);
-  });
+    div.style.padding = "5px";
+    div.style.margin = "3px 0";
+    div.style.borderRadius = "5px";
 
-  onlineCount.innerText = count;
-});
+    if (msg.uid === currentUser.uid) {
+      div.style.background = "#d0ebff";
+    } else if (msg.uid === "system") {
+      div.style.background = "#ffeebb";
+      div.classList.add("systemMsg");
+      if (!showSystemMsg) div.style.display = "none";
+    } else {
+      div.style.background = "#f0f0f0";
+    }
+
+    const header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+
+    const info = document.createElement("span");
+    info.innerHTML = `<b>${msg.name}</b> [${msg.time}]`;
+    header.appendChild(info);
+
+    const btnArea = document.createElement("div");
+
+    if (msg.uid !== "system") {
+      const replyBtn = document.createElement("button");
+      replyBtn.innerText = "返信";
+      replyBtn.onclick = () => setReply(msg);
+      btnArea.appendChild(replyBtn);
+    }
+
+    if (msg.uid === currentUser.uid || isAdmin) {
+      const delBtn = document.createElement("button");
+      delBtn.innerText = "削除";
+      delBtn.onclick = () => {
+        if (confirm("削除しますか？")) {
+          db.ref("threads/" + threadId + "/messages/" + key).remove();
+        }
+      };
+      btnArea.appendChild(delBtn);
+    }
+
+    header.appendChild(btnArea);
+
+    const body = document.createElement("div");
+
+    if (msg.reply) {
+      const r = document.createElement("div");
+      r.style.background = "#ddd";
+      r.style.fontSize = "12px";
+      r.innerText = `↪ ${msg.reply.name}: ${msg.reply.message}`;
+      body.appendChild(r);
+    }
+
+    const parts = msg.message.split(/\s+/);
+
+    parts.forEach(part => {
+      if (isImageURL(part)) {
+        const img = document.createElement("img");
+        img.src = part;
+        img.style.maxWidth = "200px";
+        img.style.display = "block";
+        body.appendChild(img);
+      } else if (getYouTubeEmbedURL(part)) {
+        const iframe = document.createElement("iframe");
+        iframe.src = getYouTubeEmbedURL(part);
+        iframe.width = "300";
+        iframe.height = "170";
+        iframe.style.border = "none";
+        iframe.allowFullscreen = true;
+        iframe.style.display = "block";
+        body.appendChild(iframe);
+      } else {
+        const span = document.createElement("span");
+        span.innerText = part + " ";
+        body.appendChild(span);
+      }
+    });
+
+    div.appendChild(header);
+    div.appendChild(body);
+
+    db.ref("threads/" + threadId + "/messages/" + key).on("value", snap => {
+      if (!snap.exists()) div.remove();
+    });
+
+    document.getElementById("chat").prepend(div);
+  });
+}
+
+// ===== オンライン =====
+function loadOnlineUsers() {
+  const onlineDiv = document.getElementById("onlineUsers");
+  const onlineCount = document.getElementById("onlineCount");
+
+  db.ref("threads/" + threadId + "/online").on("value", snapshot => {
+    onlineDiv.innerHTML = "";
+    let count = 0;
+
+    snapshot.forEach(child => {
+      const user = child.val();
+      count++;
+
+      const div = document.createElement("div");
+      div.innerText = `${user.name} [${user.id}]`;
+      onlineDiv.appendChild(div);
+    });
+
+    onlineCount.innerText = count;
+  });
+}
 </script>
 
 </body>
