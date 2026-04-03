@@ -6,7 +6,6 @@
 </head>
 <body>
 
-<!-- 戻る -->
 <button onclick="goBack()" style="position: fixed; top:10px; left:10px;">
 ← スレ一覧
 </button>
@@ -18,6 +17,14 @@
 
     <h2 id="title"></h2>
     <p id="status"></p>
+
+    <!-- 🔑 招待リンク管理 -->
+    <div id="invitePanel" style="display:none; border:1px solid #ccc; padding:5px; margin-bottom:10px;">
+      <b>招待リンク</b><br>
+      <button onclick="createInvite()">生成</button>
+      <button onclick="deleteInvite()">削除</button>
+      <div id="inviteLink" style="word-break:break-all;"></div>
+    </div>
 
     <label>
       <input type="checkbox" id="toggleSystemMsg">
@@ -61,59 +68,56 @@ const auth = firebase.auth();
 
 const params = new URLSearchParams(location.search);
 const threadId = params.get("id");
+const inviteToken = params.get("invite");
 
 let currentUser = null;
 let fixedID = null;
 let replyTo = null;
 let isAdmin = false;
+let isOwner = false;
+
+// ===== ランダムトークン =====
+function randomToken(len=40){
+  const chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let t="";
+  for(let i=0;i<len;i++){
+    t += chars[Math.floor(Math.random()*chars.length)];
+  }
+  return t;
+}
 
 // 戻る
 function goBack() {
   location.href = "threads.html";
 }
 
-// ===== システム表示 =====
-let showSystemMsg = localStorage.getItem("showSystemMsg") !== "false";
-document.getElementById("toggleSystemMsg").checked = showSystemMsg;
-
-document.getElementById("toggleSystemMsg").addEventListener("change", e => {
-  showSystemMsg = e.target.checked;
-  localStorage.setItem("showSystemMsg", showSystemMsg);
-
-  document.querySelectorAll(".systemMsg").forEach(el => {
-    el.style.display = showSystemMsg ? "block" : "none";
-  });
-});
-
-// ===== ユーティリティ =====
-function isImageURL(text) {
-  return /(https?:\/\/.*\.(png|jpg|jpeg|gif|webp))/i.test(text);
-}
-
-function getYouTubeEmbedURL(url) {
-  const reg = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/;
-  const match = url.match(reg);
-  return match ? "https://www.youtube.com/embed/" + match[1] : null;
-}
-
-function generateRandomID(length = 8) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let id = '';
-  for (let i = 0; i < length; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
-}
-
-// ===== 🔒 ログイン & アクセスチェック =====
+// ===== ログイン & 招待処理 =====
 auth.onAuthStateChanged(user => {
-  if (!user) {
-    location.href = "index.html";
-    return;
-  }
+  if (!user) return location.href = "index.html";
 
-  // 🔴 アクセス権チェック
-  db.ref("threadAccess/" + threadId + "/" + user.uid).once("value")
+  currentUser = user;
+
+  db.ref("threads/" + threadId).once("value").then(snap => {
+    const data = snap.val();
+    if (!data) return;
+
+    // スレ主判定
+    if (data.owner === user.uid) {
+      isOwner = true;
+      document.getElementById("invitePanel").style.display = "block";
+    }
+
+    // 🔑 招待リンク処理
+    if (inviteToken && data.inviteToken && inviteToken === data.inviteToken) {
+      db.ref("threadAccess/" + threadId + "/" + user.uid).set(true);
+
+      // URLからinvite削除（超重要）
+      history.replaceState({}, "", "thread.html?id=" + threadId);
+    }
+
+    // アクセス確認
+    return db.ref("threadAccess/" + threadId + "/" + user.uid).once("value");
+  })
   .then(accessSnap => {
 
     if (!accessSnap.exists()) {
@@ -122,57 +126,69 @@ auth.onAuthStateChanged(user => {
       return;
     }
 
-    currentUser = user;
-
-    // 管理者判定
-    db.ref("admins/" + user.uid).once("value").then(snap => {
-      isAdmin = snap.exists();
-    });
-
-    const userRef = db.ref("users/" + user.uid);
-
-    userRef.once("value").then(snap => {
-      const data = snap.val() || {};
-
-      const name = data.displayName || user.email;
-      localStorage.setItem("displayName", name);
-
-      fixedID = data.fixedID || generateRandomID(8);
-      userRef.update({ displayName: name, fixedID: fixedID });
-
-      document.getElementById("status").innerText =
-        `${name} [${fixedID}]`;
-
-      // 入室メッセージ
-      db.ref("threads/" + threadId + "/messages").push({
-        uid: "system",
-        name: "システム",
-        message: `${name} が入室しました`,
-        time: new Date().toLocaleString()
-      });
-
-      // オンライン状態
-      const onlineRef = db.ref("threads/" + threadId + "/online/" + user.uid);
-      const connectedRef = db.ref(".info/connected");
-
-      connectedRef.on("value", snap => {
-        if (snap.val() === true) {
-          onlineRef.onDisconnect().remove();
-          onlineRef.set({ name: name, id: fixedID });
-        }
-      });
-
-      // タイトル取得
-      db.ref("threads/" + threadId).once("value", snap => {
-        document.getElementById("title").innerText = snap.val().title;
-      });
-
-      // メッセージ読み込み開始
-      loadMessages();
-      loadOnlineUsers();
-    });
+    startApp();
   });
 });
+
+// ===== 本体開始 =====
+function startApp() {
+
+  db.ref("admins/" + currentUser.uid).once("value").then(snap => {
+    isAdmin = snap.exists();
+  });
+
+  const userRef = db.ref("users/" + currentUser.uid);
+
+  userRef.once("value").then(snap => {
+    const data = snap.val() || {};
+
+    const name = data.displayName || currentUser.email;
+    localStorage.setItem("displayName", name);
+
+    fixedID = data.fixedID || randomToken(8);
+    userRef.update({ displayName: name, fixedID });
+
+    document.getElementById("status").innerText =
+      `${name} [${fixedID}]`;
+
+    // タイトル
+    db.ref("threads/" + threadId).once("value", snap => {
+      document.getElementById("title").innerText = snap.val().title;
+    });
+
+    // 入室メッセージ
+    db.ref("threads/" + threadId + "/messages").push({
+      uid: "system",
+      name: "システム",
+      message: `${name} が入室しました`,
+      time: new Date().toLocaleString()
+    });
+
+    loadMessages();
+    loadOnlineUsers();
+  });
+}
+
+// ===== 招待リンク生成 =====
+function createInvite() {
+  if (!isOwner) return alert("スレ主のみ");
+
+  const token = randomToken();
+
+  db.ref("threads/" + threadId + "/inviteToken").set(token).then(() => {
+    const url = location.origin + location.pathname + "?id=" + threadId + "&invite=" + token;
+    document.getElementById("inviteLink").innerText = url;
+  });
+}
+
+// ===== 招待リンク削除 =====
+function deleteInvite() {
+  if (!isOwner) return alert("スレ主のみ");
+
+  db.ref("threads/" + threadId + "/inviteToken").remove().then(() => {
+    document.getElementById("inviteLink").innerText = "削除しました";
+  });
+}
 
 // ===== 返信 =====
 function setReply(msg) {
@@ -181,7 +197,6 @@ function setReply(msg) {
   document.getElementById("replyText").innerText =
     `${msg.name}: ${msg.message}`;
 }
-
 function cancelReply() {
   replyTo = null;
   document.getElementById("replyBox").style.display = "none";
@@ -198,109 +213,19 @@ function send() {
     uid: currentUser.uid,
     name: `${name} [${fixedID}]`,
     message: text,
-    time: new Date().toLocaleString(),
-    reply: replyTo ? {
-      name: replyTo.name,
-      message: replyTo.message
-    } : null
+    time: new Date().toLocaleString()
   });
 
   document.getElementById("msg").value = "";
-  cancelReply();
 }
 
-// ===== メッセージ表示 =====
+// ===== メッセージ =====
 function loadMessages() {
   db.ref("threads/" + threadId + "/messages").on("child_added", data => {
     const msg = data.val();
-    const key = data.key;
 
     const div = document.createElement("div");
-    div.style.padding = "5px";
-    div.style.margin = "3px 0";
-    div.style.borderRadius = "5px";
-
-    if (msg.uid === currentUser.uid) {
-      div.style.background = "#d0ebff";
-    } else if (msg.uid === "system") {
-      div.style.background = "#ffeebb";
-      div.classList.add("systemMsg");
-      if (!showSystemMsg) div.style.display = "none";
-    } else {
-      div.style.background = "#f0f0f0";
-    }
-
-    const header = document.createElement("div");
-    header.style.display = "flex";
-    header.style.justifyContent = "space-between";
-
-    const info = document.createElement("span");
-    info.innerHTML = `<b>${msg.name}</b> [${msg.time}]`;
-    header.appendChild(info);
-
-    const btnArea = document.createElement("div");
-
-    if (msg.uid !== "system") {
-      const replyBtn = document.createElement("button");
-      replyBtn.innerText = "返信";
-      replyBtn.onclick = () => setReply(msg);
-      btnArea.appendChild(replyBtn);
-    }
-
-    if (msg.uid === currentUser.uid || isAdmin) {
-      const delBtn = document.createElement("button");
-      delBtn.innerText = "削除";
-      delBtn.onclick = () => {
-        if (confirm("削除しますか？")) {
-          db.ref("threads/" + threadId + "/messages/" + key).remove();
-        }
-      };
-      btnArea.appendChild(delBtn);
-    }
-
-    header.appendChild(btnArea);
-
-    const body = document.createElement("div");
-
-    if (msg.reply) {
-      const r = document.createElement("div");
-      r.style.background = "#ddd";
-      r.style.fontSize = "12px";
-      r.innerText = `↪ ${msg.reply.name}: ${msg.reply.message}`;
-      body.appendChild(r);
-    }
-
-    const parts = msg.message.split(/\s+/);
-
-    parts.forEach(part => {
-      if (isImageURL(part)) {
-        const img = document.createElement("img");
-        img.src = part;
-        img.style.maxWidth = "200px";
-        img.style.display = "block";
-        body.appendChild(img);
-      } else if (getYouTubeEmbedURL(part)) {
-        const iframe = document.createElement("iframe");
-        iframe.src = getYouTubeEmbedURL(part);
-        iframe.width = "300";
-        iframe.height = "170";
-        iframe.style.border = "none";
-        iframe.allowFullscreen = true;
-        iframe.style.display = "block";
-        body.appendChild(iframe);
-      } else {
-        const span = document.createElement("span");
-        span.innerText = part + " ";
-        body.appendChild(span);
-      }
-    });
-
-    div.appendChild(header);
-    div.appendChild(body);
-
-    db.ref("threads/" + threadId + "/messages/" + key).on("value", snap => {
-      if (!snap.exists()) div.remove();
-    });
+    div.innerText = `${msg.name}: ${msg.message}`;
 
     document.getElementById("chat").prepend(div);
   });
@@ -308,23 +233,19 @@ function loadMessages() {
 
 // ===== オンライン =====
 function loadOnlineUsers() {
-  const onlineDiv = document.getElementById("onlineUsers");
-  const onlineCount = document.getElementById("onlineCount");
-
   db.ref("threads/" + threadId + "/online").on("value", snapshot => {
-    onlineDiv.innerHTML = "";
+    const div = document.getElementById("onlineUsers");
+    div.innerHTML = "";
     let count = 0;
 
     snapshot.forEach(child => {
-      const user = child.val();
       count++;
-
-      const div = document.createElement("div");
-      div.innerText = `${user.name} [${user.id}]`;
-      onlineDiv.appendChild(div);
+      const d = document.createElement("div");
+      d.innerText = child.val().name;
+      div.appendChild(d);
     });
 
-    onlineCount.innerText = count;
+    document.getElementById("onlineCount").innerText = count;
   });
 }
 </script>
