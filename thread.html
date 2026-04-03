@@ -1,3 +1,4 @@
+thread.html
 <!DOCTYPE html>
 <html>
 <head>
@@ -6,7 +7,13 @@
 </head>
 <body>
 
-<button onclick="goBack()" style="position:fixed;top:10px;left:10px;z-index:1000;">
+<!-- 🔙 戻るボタン（固定表示） -->
+<button onclick="goBack()" style="
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+">
 ← スレ一覧
 </button>
 
@@ -18,20 +25,11 @@
     <h2 id="title"></h2>
     <p id="status"></p>
 
-    <!-- 招待 -->
-    <div id="invitePanel" style="display:none; border:1px solid #ccc; padding:5px;">
-      <b>招待リンク</b><br>
-      <button onclick="createInvite()">生成</button>
-      <button onclick="deleteInvite()">削除</button>
-      <div id="inviteLink"></div>
-    </div>
-
     <label>
       <input type="checkbox" id="toggleSystemMsg">
       システムメッセージ表示
     </label>
 
-    <!-- 返信 -->
     <div id="replyBox" style="display:none; background:#eee; padding:5px;">
       <span id="replyText"></span>
       <button onclick="cancelReply()">×</button>
@@ -69,310 +67,250 @@ const auth = firebase.auth();
 
 const params = new URLSearchParams(location.search);
 const threadId = params.get("id");
-const inviteToken = params.get("invite");
 
-let currentUser, fixedID, replyTo=null;
-let isOwner=false, isAdmin=false;
+let currentUser = null;
+let fixedID = null;
+let replyTo = null;
+let isAdmin = false;
 
 // ===== 戻る =====
-function goBack(){ location.href="threads.html"; }
-
-// ===== ランダム =====
-function randomID(len=40){
-  const c="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let r="";
-  for(let i=0;i<len;i++) r+=c[Math.floor(Math.random()*c.length)];
-  return r;
-}
-
-// ===== 時刻 =====
-function nowTime(){
-  const d=new Date();
-  return d.getFullYear()+"/"+
-  ("0"+(d.getMonth()+1)).slice(-2)+"/"+
-  ("0"+d.getDate()).slice(-2)+" "+
-  ("0"+d.getHours()).slice(-2)+":"+
-  ("0"+d.getMinutes()).slice(-2)+":"+
-  ("0"+d.getSeconds()).slice(-2);
+function goBack() {
+  location.href = "threads.html";
 }
 
 // ===== システム表示 =====
 let showSystemMsg = localStorage.getItem("showSystemMsg") !== "false";
 document.getElementById("toggleSystemMsg").checked = showSystemMsg;
 
-document.getElementById("toggleSystemMsg").addEventListener("change", e=>{
+document.getElementById("toggleSystemMsg").addEventListener("change", e => {
   showSystemMsg = e.target.checked;
   localStorage.setItem("showSystemMsg", showSystemMsg);
 
-  document.querySelectorAll(".systemMsg").forEach(el=>{
-    el.style.display = showSystemMsg ? "block":"none";
+  document.querySelectorAll(".systemMsg").forEach(el => {
+    el.style.display = showSystemMsg ? "block" : "none";
   });
 });
 
-// ===== URL判定 =====
-function isImageURL(text){
+// ===== ユーティリティ =====
+function isImageURL(text) {
   return /(https?:\/\/.*\.(png|jpg|jpeg|gif|webp))/i.test(text);
 }
 
-function getYouTubeEmbedURL(url){
-  const reg=/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/;
-  const m=url.match(reg);
-  return m ? "https://www.youtube.com/embed/"+m[1] : null;
+function getYouTubeEmbedURL(url) {
+  const reg = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/;
+  const match = url.match(reg);
+  return match ? "https://www.youtube.com/embed/" + match[1] : null;
 }
 
-// ===== 認証 =====
-auth.onAuthStateChanged(user => {
-
-  // ===== 未ログインだけ弾く =====
-  if (!user) {
-    location.href = "index.html";
-    return;
+function generateRandomID(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < length; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
   }
+  return id;
+}
+
+// ===== ログイン =====
+auth.onAuthStateChanged(user => {
+  if (!user) location.href = "index.html";
 
   currentUser = user;
 
-  db.ref("threads/" + threadId).once("value").then(snap => {
-    const data = snap.val();
-
-    // スレ存在チェック
-    if (!data) {
-      alert("スレッドが存在しません");
-      return;
-    }
-
-    // ===== 🔑 招待リンク処理（ここが超重要） =====
-    if (inviteToken && data.inviteToken === inviteToken) {
-
-      db.ref("threadAccess/" + threadId + "/" + user.uid).set(true);
-      db.ref("users/" + user.uid + "/threads/" + threadId).set(true);
-
-      history.replaceState({}, "", "thread.html?id=" + threadId);
-    }
-
-    // ===== アクセス確認 =====
-    return db.ref("threadAccess/" + threadId + "/" + user.uid).once("value");
-  })
-  .then(accessSnap => {
-
-    // ❌ リダイレクトしない
-    if (!accessSnap || !accessSnap.exists()) {
-      alert("このスレッドには入れません");
-      return;
-    }
-
-    // ===== 正常なら開始 =====
-    startApp();
+  db.ref("admins/" + user.uid).once("value").then(snap => {
+    isAdmin = snap.exists();
   });
 
-});
+  const userRef = db.ref("users/" + user.uid);
 
-  db.ref("threads/"+threadId).once("value").then(snap=>{
-    const data=snap.val();
-    if(!data) return;
+  userRef.once("value").then(snap => {
+    const data = snap.val() || {};
 
-    document.getElementById("title").innerText=data.title;
+    const name = data.displayName || user.email;
+    localStorage.setItem("displayName", name);
 
-    if (inviteToken && data.inviteToken === inviteToken) {
+    fixedID = data.fixedID || generateRandomID(8);
 
-  // 🔥 両方登録
-  db.ref("threadAccess/" + threadId + "/" + user.uid).set(true);
-  db.ref("users/" + user.uid + "/threads/" + threadId).set(true);
+    userRef.update({ displayName: name, fixedID: fixedID });
 
-  history.replaceState({}, "", "thread.html?id=" + threadId);
-}
-    
-    if(data.owner===user.uid){
-      isOwner=true;
-      document.getElementById("invitePanel").style.display="block";
-    }
-
-    if(inviteToken && inviteToken===data.inviteToken){
-      db.ref("threadAccess/"+threadId+"/"+user.uid).set(true);
-      history.replaceState({}, "", "?id="+threadId);
-    }
-
-    return db.ref("threadAccess/"+threadId+"/"+user.uid).once("value");
-  })
-  .then(snap=>{
-    if(!snap.exists()){
-      alert("入れません");
-      location.href="threads.html";
-      return;
-    }
-    start();
-  });
-});
-
-// ===== 開始 =====
-function start(){
-  const userRef=db.ref("users/"+currentUser.uid);
-
-  userRef.once("value").then(snap=>{
-    const d=snap.val()||{};
-    const name=d.displayName||currentUser.email;
-
-    fixedID=d.fixedID||randomID(8);
-    userRef.update({displayName:name,fixedID});
-
-    document.getElementById("status").innerText=name+" ["+fixedID+"]";
+    document.getElementById("status").innerText =
+      `${name} [${fixedID}]`;
 
     // 入室メッセージ
-    db.ref("threads/"+threadId+"/messages").push({
-      uid:"system",
-      name:"システム",
-      message:name+" が入室しました",
-      time:nowTime()
+    db.ref("threads/" + threadId + "/messages").push({
+      uid: "system",
+      name: "システム",
+      message: `${name} が入室しました`,
+      time: new Date().toLocaleString()
     });
 
-    // ===== オンライン =====
-    const onlineRef = db.ref("threads/"+threadId+"/online/"+currentUser.uid);
+    // オンライン
+    const onlineRef = db.ref("threads/" + threadId + "/online/" + user.uid);
     const connectedRef = db.ref(".info/connected");
 
-    connectedRef.on("value", snap=>{
-      if(snap.val()){
+    connectedRef.on("value", snap => {
+      if (snap.val() === true) {
         onlineRef.onDisconnect().remove();
-        onlineRef.set({name:name,id:fixedID});
+        onlineRef.set({ name: name, id: fixedID });
       }
     });
-
-    db.ref("threads/"+threadId+"/online").on("value", snap=>{
-      const data=snap.val()||{};
-      const list=Object.values(data);
-
-      document.getElementById("onlineCount").innerText=list.length;
-
-      const box=document.getElementById("onlineUsers");
-      box.innerHTML="";
-      list.forEach(u=>{
-        const div=document.createElement("div");
-        div.innerText=u.name+" ["+u.id+"]";
-        box.appendChild(div);
-      });
-    });
-
-    // ===== メッセージ =====
-    db.ref("threads/"+threadId+"/messages").on("child_added", snap=>{
-      const msg=snap.val();
-      const key=snap.key;
-
-      const div=document.createElement("div");
-
-      div.style.position="relative";
-      div.style.margin="10px 0";
-      div.style.padding="10px";
-      div.style.borderRadius="10px";
-
-      // 背景色
-      if(msg.uid==="system"){
-        div.style.background="yellow";
-        div.className="systemMsg";
-        if(!showSystemMsg) div.style.display="none";
-      }else if(msg.uid===currentUser.uid){
-        div.style.background="#cce5ff";
-      }else{
-        div.style.background="#f1f1f1";
-      }
-
-      // 内容生成
-      let content = msg.message;
-
-      if(isImageURL(content)){
-        content = `<img src="${content}" width="200">`;
-      }
-
-      const yt = getYouTubeEmbedURL(content);
-      if(yt){
-        content = `<iframe width="300" height="200" src="${yt}" frameborder="0"></iframe>`;
-      }
-
-      div.innerHTML = `
-        <b>${msg.name}</b>
-        <small>${msg.time}</small><br>
-        ${content}
-      `;
-
-      // ===== ボタン右上 =====
-      const btnArea=document.createElement("div");
-      btnArea.style.position="absolute";
-      btnArea.style.top="5px";
-      btnArea.style.right="5px";
-
-      // 返信（システム禁止）
-      if(msg.uid!=="system"){
-        const replyBtn=document.createElement("button");
-        replyBtn.innerText="返信";
-        replyBtn.style.marginRight="8px";
-        replyBtn.onclick=()=>{
-          replyTo=msg;
-          document.getElementById("replyBox").style.display="block";
-          document.getElementById("replyText").innerText=msg.message;
-        };
-        btnArea.appendChild(replyBtn);
-      }
-
-      // 削除
-      if(msg.uid===currentUser.uid || isAdmin){
-        const delBtn=document.createElement("button");
-        delBtn.innerText="削除";
-        delBtn.onclick=()=>{
-          if(confirm("削除しますか？")){
-            db.ref("threads/"+threadId+"/messages/"+key).remove();
-          }
-        };
-        btnArea.appendChild(delBtn);
-      }
-
-      div.appendChild(btnArea);
-
-      document.getElementById("chat").prepend(div);
-    });
-
   });
-}
+});
 
-// ===== 返信解除 =====
-function cancelReply(){
-  replyTo=null;
-  document.getElementById("replyBox").style.display="none";
+// ===== タイトル =====
+db.ref("threads/" + threadId).once("value", snap => {
+  document.getElementById("title").innerText = snap.val().title;
+});
+
+// ===== 返信 =====
+function setReply(msg) {
+  replyTo = msg;
+  document.getElementById("replyBox").style.display = "block";
+  document.getElementById("replyText").innerText =
+    `${msg.name}: ${msg.message}`;
+}
+function cancelReply() {
+  replyTo = null;
+  document.getElementById("replyBox").style.display = "none";
 }
 
 // ===== 送信 =====
-function send(){
-  const text=document.getElementById("msg").value;
-  if(!text)return;
+function send() {
+  const text = document.getElementById("msg").value;
+  if (!text) return;
 
-  const name=document.getElementById("status").innerText;
+  const name = localStorage.getItem("displayName");
 
-  db.ref("threads/"+threadId+"/messages").push({
-    uid:currentUser.uid,
-    name:name,
-    message:text,
-    time:nowTime()
+  db.ref("threads/" + threadId + "/messages").push({
+    uid: currentUser.uid,
+    name: `${name} [${fixedID}]`,
+    message: text,
+    time: new Date().toLocaleString(),
+    reply: replyTo ? {
+      name: replyTo.name,
+      message: replyTo.message
+    } : null
   });
 
-  document.getElementById("msg").value="";
+  document.getElementById("msg").value = "";
   cancelReply();
 }
 
-// ===== 招待 =====
-function createInvite(){
-  if(!isOwner)return;
+// ===== 表示 =====
+db.ref("threads/" + threadId + "/messages").on("child_added", data => {
+  const msg = data.val();
+  const key = data.key;
 
-  const token=randomID(40);
+  const div = document.createElement("div");
+  div.style.padding = "5px";
+  div.style.margin = "3px 0";
+  div.style.borderRadius = "5px";
 
-  db.ref("threads/"+threadId+"/inviteToken").set(token).then(()=>{
-    const url=location.origin+location.pathname+"?id="+threadId+"&invite="+token;
-    document.getElementById("inviteLink").innerText=url;
+  if (msg.uid === currentUser?.uid) {
+    div.style.background = "#d0ebff";
+  } else if (msg.uid === "system") {
+    div.style.background = "#ffeebb";
+    div.classList.add("systemMsg");
+    if (!showSystemMsg) div.style.display = "none";
+  } else {
+    div.style.background = "#f0f0f0";
+  }
+
+  const header = document.createElement("div");
+  header.style.display = "flex";
+  header.style.justifyContent = "space-between";
+
+  const info = document.createElement("span");
+  info.innerHTML = `<b>${msg.name}</b> [${msg.time}]`;
+  header.appendChild(info);
+
+  const btnArea = document.createElement("div");
+
+  if (msg.uid !== "system") {
+    const replyBtn = document.createElement("button");
+    replyBtn.innerText = "返信";
+    replyBtn.onclick = () => setReply(msg);
+    btnArea.appendChild(replyBtn);
+  }
+
+  if (msg.uid === currentUser?.uid || isAdmin) {
+    const delBtn = document.createElement("button");
+    delBtn.innerText = "削除";
+    delBtn.onclick = () => {
+      if (confirm("削除しますか？")) {
+        db.ref("threads/" + threadId + "/messages/" + key).remove();
+      }
+    };
+    btnArea.appendChild(delBtn);
+  }
+
+  header.appendChild(btnArea);
+
+  const body = document.createElement("div");
+
+  if (msg.reply) {
+    const r = document.createElement("div");
+    r.style.background = "#ddd";
+    r.style.fontSize = "12px";
+    r.innerText = `↪ ${msg.reply.name}: ${msg.reply.message}`;
+    body.appendChild(r);
+  }
+
+  const parts = msg.message.split(/\s+/);
+
+  parts.forEach(part => {
+    if (isImageURL(part)) {
+      const img = document.createElement("img");
+      img.src = part;
+      img.style.maxWidth = "200px";
+      img.style.display = "block";
+      body.appendChild(img);
+    } else if (getYouTubeEmbedURL(part)) {
+      const iframe = document.createElement("iframe");
+      iframe.src = getYouTubeEmbedURL(part);
+      iframe.width = "300";
+      iframe.height = "170";
+      iframe.style.border = "none";
+      iframe.allowFullscreen = true;
+      iframe.style.display = "block";
+      body.appendChild(iframe);
+    } else {
+      const span = document.createElement("span");
+      span.innerText = part + " ";
+      body.appendChild(span);
+    }
   });
-}
 
-function deleteInvite(){
-  if(!isOwner)return;
+  div.appendChild(header);
+  div.appendChild(body);
 
-  db.ref("threads/"+threadId+"/inviteToken").remove().then(()=>{
-    document.getElementById("inviteLink").innerText="削除しました";
+  db.ref("threads/" + threadId + "/messages/" + key).on("value", snap => {
+    if (!snap.exists()) div.remove();
   });
-}
+
+  document.getElementById("chat").prepend(div);
+});
+
+// ===== オンライン =====
+const onlineDiv = document.getElementById("onlineUsers");
+const onlineCount = document.getElementById("onlineCount");
+
+db.ref("threads/" + threadId + "/online").on("value", snapshot => {
+  onlineDiv.innerHTML = "";
+  let count = 0;
+
+  snapshot.forEach(child => {
+    const user = child.val();
+    count++;
+
+    const div = document.createElement("div");
+    div.innerText = `${user.name} [${user.id}]`;
+    onlineDiv.appendChild(div);
+  });
+
+  onlineCount.innerText = count;
+});
 </script>
+
 </body>
 </html>
