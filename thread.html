@@ -6,19 +6,37 @@
 </head>
 <body>
 
-<h2 id="title"></h2>
+<div style="display:flex; height:100vh;">
 
-<p id="status"></p>
+  <!-- 左：チャット -->
+  <div style="flex:3; padding:10px;">
 
-<div id="replyBox" style="display:none; background:#eee; padding:5px;">
-  <span id="replyText"></span>
-  <button onclick="cancelReply()">×</button>
+    <h2 id="title"></h2>
+    <p id="status"></p>
+
+    <label>
+      <input type="checkbox" id="toggleSystemMsg">
+      システムメッセージ表示
+    </label>
+
+    <div id="replyBox" style="display:none; background:#eee; padding:5px;">
+      <span id="replyText"></span>
+      <button onclick="cancelReply()">×</button>
+    </div>
+
+    <input id="msg">
+    <button onclick="send()">送信</button>
+
+    <div id="chat"></div>
+  </div>
+
+  <!-- 右：オンライン -->
+  <div style="flex:1; border-left:1px solid #ccc; padding:10px;">
+    <h3>オンライン (<span id="onlineCount">0</span>人)</h3>
+    <div id="onlineUsers"></div>
+  </div>
+
 </div>
-
-<input id="msg">
-<button onclick="send()">送信</button>
-
-<div id="chat"></div>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -44,20 +62,30 @@ let fixedID = null;
 let replyTo = null;
 let isAdmin = false;
 
-// ===== 画像判定 =====
+// ===== システム表示設定 =====
+let showSystemMsg = localStorage.getItem("showSystemMsg") !== "false";
+document.getElementById("toggleSystemMsg").checked = showSystemMsg;
+
+document.getElementById("toggleSystemMsg").addEventListener("change", e => {
+  showSystemMsg = e.target.checked;
+  localStorage.setItem("showSystemMsg", showSystemMsg);
+
+  document.querySelectorAll(".systemMsg").forEach(el => {
+    el.style.display = showSystemMsg ? "block" : "none";
+  });
+});
+
+// ===== ユーティリティ =====
 function isImageURL(text) {
   return /(https?:\/\/.*\.(png|jpg|jpeg|gif|webp))/i.test(text);
 }
 
-// ===== YouTube =====
 function getYouTubeEmbedURL(url) {
   const reg = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/;
   const match = url.match(reg);
-  if (match) return "https://www.youtube.com/embed/" + match[1];
-  return null;
+  return match ? "https://www.youtube.com/embed/" + match[1] : null;
 }
 
-// ===== ID生成 =====
 function generateRandomID(length = 8) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let id = '';
@@ -73,12 +101,11 @@ auth.onAuthStateChanged(user => {
 
   currentUser = user;
 
-  const userRef = db.ref("users/" + user.uid);
-
-  // 管理者判定
   db.ref("admins/" + user.uid).once("value").then(snap => {
     isAdmin = snap.exists();
   });
+
+  const userRef = db.ref("users/" + user.uid);
 
   userRef.once("value").then(snap => {
     const data = snap.val() || {};
@@ -88,20 +115,35 @@ auth.onAuthStateChanged(user => {
 
     fixedID = data.fixedID || generateRandomID(8);
 
-    userRef.update({
-      displayName: name,
-      fixedID: fixedID
-    });
+    userRef.update({ displayName: name, fixedID: fixedID });
 
     document.getElementById("status").innerText =
       `${name} [${fixedID}]`;
+
+    // ===== 入室メッセージ =====
+    db.ref("threads/" + threadId + "/messages").push({
+      uid: "system",
+      name: "システム",
+      message: `${name} が入室しました`,
+      time: new Date().toLocaleString()
+    });
+
+    // ===== オンライン管理 =====
+    const onlineRef = db.ref("threads/" + threadId + "/online/" + user.uid);
+    const connectedRef = db.ref(".info/connected");
+
+    connectedRef.on("value", snap => {
+      if (snap.val() === true) {
+        onlineRef.onDisconnect().remove();
+        onlineRef.set({ name: name, id: fixedID });
+      }
+    });
   });
 });
 
 // ===== タイトル =====
 db.ref("threads/" + threadId).once("value", snap => {
-  const data = snap.val();
-  document.getElementById("title").innerText = data.title;
+  document.getElementById("title").innerText = snap.val().title;
 });
 
 // ===== 返信 =====
@@ -118,8 +160,6 @@ function cancelReply() {
 
 // ===== 送信 =====
 function send() {
-  if (!currentUser) return;
-
   const text = document.getElementById("msg").value;
   if (!text) return;
 
@@ -152,6 +192,10 @@ db.ref("threads/" + threadId + "/messages").on("child_added", data => {
 
   if (msg.uid === currentUser?.uid) {
     div.style.background = "#d0ebff";
+  } else if (msg.uid === "system") {
+    div.style.background = "#ffeebb";
+    div.classList.add("systemMsg");
+    if (!showSystemMsg) div.style.display = "none";
   } else {
     div.style.background = "#f0f0f0";
   }
@@ -166,13 +210,13 @@ db.ref("threads/" + threadId + "/messages").on("child_added", data => {
 
   const btnArea = document.createElement("div");
 
-  // 返信
-  const replyBtn = document.createElement("button");
-  replyBtn.innerText = "返信";
-  replyBtn.onclick = () => setReply(msg);
-  btnArea.appendChild(replyBtn);
+  if (msg.uid !== "system") {
+    const replyBtn = document.createElement("button");
+    replyBtn.innerText = "返信";
+    replyBtn.onclick = () => setReply(msg);
+    btnArea.appendChild(replyBtn);
+  }
 
-  // 削除（自分 or 管理者）
   if (msg.uid === currentUser?.uid || isAdmin) {
     const delBtn = document.createElement("button");
     delBtn.innerText = "削除";
@@ -188,7 +232,6 @@ db.ref("threads/" + threadId + "/messages").on("child_added", data => {
 
   const body = document.createElement("div");
 
-  // 返信表示
   if (msg.reply) {
     const r = document.createElement("div");
     r.style.background = "#ddd";
@@ -197,20 +240,16 @@ db.ref("threads/" + threadId + "/messages").on("child_added", data => {
     body.appendChild(r);
   }
 
-  // メッセージ解析
   const parts = msg.message.split(/\s+/);
 
   parts.forEach(part => {
-
     if (isImageURL(part)) {
       const img = document.createElement("img");
       img.src = part;
       img.style.maxWidth = "200px";
       img.style.display = "block";
       body.appendChild(img);
-    }
-
-    else if (getYouTubeEmbedURL(part)) {
+    } else if (getYouTubeEmbedURL(part)) {
       const iframe = document.createElement("iframe");
       iframe.src = getYouTubeEmbedURL(part);
       iframe.width = "300";
@@ -219,25 +258,41 @@ db.ref("threads/" + threadId + "/messages").on("child_added", data => {
       iframe.allowFullscreen = true;
       iframe.style.display = "block";
       body.appendChild(iframe);
-    }
-
-    else {
+    } else {
       const span = document.createElement("span");
       span.innerText = part + " ";
       body.appendChild(span);
     }
-
   });
 
   div.appendChild(header);
   div.appendChild(body);
 
-  // 削除同期
   db.ref("threads/" + threadId + "/messages/" + key).on("value", snap => {
     if (!snap.exists()) div.remove();
   });
 
   document.getElementById("chat").prepend(div);
+});
+
+// ===== オンライン表示 =====
+const onlineDiv = document.getElementById("onlineUsers");
+const onlineCount = document.getElementById("onlineCount");
+
+db.ref("threads/" + threadId + "/online").on("value", snapshot => {
+  onlineDiv.innerHTML = "";
+  let count = 0;
+
+  snapshot.forEach(child => {
+    const user = child.val();
+    count++;
+
+    const div = document.createElement("div");
+    div.innerText = `${user.name} [${user.id}]`;
+    onlineDiv.appendChild(div);
+  });
+
+  onlineCount.innerText = count;
 });
 </script>
 
