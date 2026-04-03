@@ -6,14 +6,9 @@
 </head>
 <body>
 
-<h2>ログイン / 新規登録</h2>
+<h2>Googleログイン</h2>
 
-<input id="displayName" placeholder="表示名"><br><br>
-<input id="email" placeholder="メール">
-<input id="password" type="password" placeholder="パスワード"><br><br>
-
-<button onclick="signup()">新規登録</button>
-<button onclick="login()">ログイン</button>
+<button onclick="googleLogin()">Googleでログイン</button>
 
 <p id="status"></p>
 
@@ -33,63 +28,57 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.database();
 
-// 新規登録
-function signup() {
-  const displayName = document.getElementById("displayName").value;
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+// ===== Googleログイン =====
+function googleLogin() {
+  const provider = new firebase.auth.GoogleAuthProvider();
 
-  if (!displayName) return alert("表示名を入力してください");
+  auth.signInWithPopup(provider)
+    .then(result => {
+      const user = result.user;
 
-  auth.createUserWithEmailAndPassword(email, password)
-    .then(userCredential => {
-      const user = userCredential.user;
-
-      // 名前をDBに保存
-      db.ref("users/" + user.uid).set({ displayName });
-
-      // メール認証送信
-      user.sendEmailVerification()
-        .then(() => alert("確認メールを送信しました。メール内リンクで認証してください"))
-        .catch(e => alert(e.message));
-
-    }).catch(e => alert(e.message));
-}
-
-// ログイン
-function login() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-
-  auth.signInWithEmailAndPassword(email, password)
-    .then(userCredential => {
-      const user = userCredential.user;
-
-      if (!user.emailVerified) {
-        alert("メール認証を完了してください");
+      // ★ Gmailチェック（念のため）
+      if (!user.email.endsWith("@gmail.com")) {
+        alert("Gmailアカウントのみ使用可能です");
         auth.signOut();
         return;
       }
 
-      // 認証済みなら表示名取得
-      db.ref("users/" + user.uid + "/displayName").once("value", snapshot => {
-        const name = snapshot.val() || user.email;
-        localStorage.setItem("displayName", name);
-        alert("ログイン成功！");
-        window.location.href = "chat.html";
+      // 初回ログイン時のみ保存
+      db.ref("users/" + user.uid).once("value", snap => {
+        if (!snap.exists()) {
+          db.ref("users/" + user.uid).set({
+            displayName: user.displayName || user.email
+          });
+        }
       });
 
-    }).catch(e => alert(e.message));
+      localStorage.setItem("displayName", user.displayName || user.email);
+
+      alert("ログイン成功！");
+      window.location.href = "chat.html";
+
+    }).catch(e => {
+      alert(e.message);
+    });
 }
 
-// 状態監視
+// ===== 状態監視 =====
 auth.onAuthStateChanged(user => {
-  if (user && user.emailVerified) {
+  if (user) {
+
+    // Gmailチェック
+    if (!user.email.endsWith("@gmail.com")) {
+      alert("Gmailのみ利用可能です");
+      auth.signOut();
+      return;
+    }
+
     db.ref("users/" + user.uid + "/displayName").once("value", snapshot => {
-      const name = snapshot.val() || user.email;
+      const name = snapshot.val() || user.displayName || user.email;
       localStorage.setItem("displayName", name);
       window.location.href = "chat.html";
     });
+
   } else {
     document.getElementById("status").innerText = "未ログイン";
   }
