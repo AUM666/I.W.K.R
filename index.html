@@ -60,20 +60,28 @@ function saveName() {
 
 // 状態監視
 auth.onAuthStateChanged(user => {
-  if (user) {
-    currentUser = user;
 
-    db.ref("users/" + user.uid + "/displayName").once("value", snapshot => {
-      const name = snapshot.val();
+  if (!user) {
+    document.getElementById("status").innerText = "未ログイン";
+    return;
+  }
 
-      if (name) {
-        localStorage.setItem("displayName", name);
-        window.location.href = "threads.html";
-      } else {
-        document.getElementById("nameBox").style.display = "block";
-        document.getElementById("status").innerText = "名前を設定してください";
-      }
-    });
+  db.ref("users/" + user.uid + "/displayName").once("value")
+  .then(snap => {
+
+    const name = snap.val();
+
+    if (name) {
+      localStorage.setItem("displayName", name);
+      location.href = "threads.html";
+    } else {
+      document.getElementById("nameBox").style.display = "block";
+      document.getElementById("status").innerText = "名前を設定してください";
+    }
+
+  });
+
+});
 
   } else {
     document.getElementById("status").innerText = "未ログイン";
