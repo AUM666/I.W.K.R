@@ -193,8 +193,11 @@ function joinByCode() {
 }
 function loadThreads() {
   db.ref("threads").on("value", snapshot => {
-    const threadsDiv = document.getElementById("threads");
-    threadsDiv.innerHTML = "";
+    const joinedDiv = document.getElementById("joinedThreads");
+    const otherDiv = document.getElementById("otherThreads");
+
+    joinedDiv.innerHTML = "";
+    otherDiv.innerHTML = "";
 
     snapshot.forEach(snap => {
       const data = snap.val();
@@ -208,24 +211,32 @@ function loadThreads() {
       div.style.borderTop = "1px solid #ccc";
       div.style.padding = "10px";
 
-      // 🔒 非参加はグレー
-      if (!isMember) {
+      if (isMember) {
+        // 🔵 参加中
+        div.innerHTML = `
+          <div style="font-size:20px; font-weight:bold;">
+            ${data.title}
+          </div>
+          <button onclick="openThread('${id}')">
+            入る
+          </button>
+        `;
+        joinedDiv.appendChild(div);
+
+      } else {
+        // 🔒 未参加
         div.style.opacity = "0.5";
+
+        div.innerHTML = `
+          <div style="font-size:20px; font-weight:bold;">
+            ${data.title}
+          </div>
+          <button disabled>
+            コードが必要
+          </button>
+        `;
+        otherDiv.appendChild(div);
       }
-
-      div.innerHTML = `
-        <div style="font-size:22px; font-weight:bold;">
-          ${data.title}
-        </div>
-
-        ${
-          isMember
-            ? `<button onclick="openThread('${id}')">参加</button>`
-            : `<button disabled>参加不可（コードが必要）</button>`
-        }
-      `;
-
-      threadsDiv.appendChild(div);
     });
   });
 }
@@ -234,4 +245,4 @@ function loadThreads() {
 </body>
 </html>
 
-あ
+い
