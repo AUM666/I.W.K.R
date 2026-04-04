@@ -100,7 +100,8 @@ function createThread() {
   const name = localStorage.getItem("displayName") || "名無し";
   const inviteCode = generateInviteCode();
 
-  const threadRef = db.ref("threads/" + currentUser.uid);
+  const threadRef = db.ref("threads").push();
+const threadId = threadRef.key;
 
   threadRef.set({
     title: title,
