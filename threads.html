@@ -177,7 +177,7 @@ function joinByCode() {
 
   });
 }
-  function loadThreads() {
+function loadThreads() {
   db.ref("threads").on("value", snapshot => {
     const threadsDiv = document.getElementById("threads");
     threadsDiv.innerHTML = "";
@@ -188,56 +188,27 @@ function joinByCode() {
 
       if (!data || !data.title) return;
 
-      if (!data.members || !data.members[currentUser.uid]) return;
-
-      const div = document.createElement("div");
-      div.style.border = "1px solid #ccc";
-      div.style.margin = "5px";
-      div.style.padding = "5px";
-
-      div.innerHTML = `
-        <b>${data.title}</b><br>
-        <button onclick="openThread('${id}')">開く</button>
-      `;
-
-      threadsDiv.prepend(div);
-    });
-  });
-}
-  function loadThreads() {
-  db.ref("threads").on("value", snapshot => {
-    const threadsDiv = document.getElementById("threads");
-    threadsDiv.innerHTML = "";
-
-    snapshot.forEach(snap => {
-      const data = snap.val();
-      const id = snap.key;
-
-      if (!data || !data.title) return;
-
-      // 🔒 参加済みだけ表示
-      if (!data.members || !data.members[currentUser.uid]) return;
+      const isMember = data.members && data.members[currentUser.uid];
 
       const div = document.createElement("div");
       div.style.borderTop = "1px solid #ccc";
       div.style.padding = "10px";
+
+      // 🔒 非参加はグレー
+      if (!isMember) {
+        div.style.opacity = "0.5";
+      }
 
       div.innerHTML = `
         <div style="font-size:22px; font-weight:bold;">
           ${data.title}
         </div>
 
-        <button onclick="openThread('${id}')" style="
-          margin-top:5px;
-          padding:5px 10px;
-          background:#4CAF50;
-          color:white;
-          border:none;
-          border-radius:5px;
-          cursor:pointer;
-        ">
-          参加
-        </button>
+        ${
+          isMember
+            ? `<button onclick="openThread('${id}')">参加</button>`
+            : `<button disabled>参加不可（コードが必要）</button>`
+        }
       `;
 
       threadsDiv.appendChild(div);
