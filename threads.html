@@ -101,7 +101,7 @@ function createThread() {
   const inviteCode = generateInviteCode();
 
   const threadRef = db.ref("threads").push();
-const threadId = threadRef.key;
+  const threadId = threadRef.key;
 
   threadRef.set({
     title: title,
@@ -113,16 +113,12 @@ const threadId = threadRef.key;
       [currentUser.uid]: true
     }
   }).then(() => {
-
-    // 🔥 inviteCodesに登録（ここ重要）
-    return db.ref("inviteCodes/" + inviteCode).set(currentUser.uid);
-
+    return db.ref("inviteCodes/" + inviteCode).set(threadId);
   }).then(() => {
-
     alert("招待コード:\n" + inviteCode);
-    location.href = "thread.html?id=" + currentUser.uid;
-
-  }).catch(() => {
+    location.href = "thread.html?id=" + threadId;
+  }).catch(e => {
+    console.error(e);
     alert("作成失敗");
   });
 
