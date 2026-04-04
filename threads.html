@@ -204,6 +204,46 @@ function joinByCode() {
     });
   });
 }
+  function loadThreads() {
+  db.ref("threads").on("value", snapshot => {
+    const threadsDiv = document.getElementById("threads");
+    threadsDiv.innerHTML = "";
+
+    snapshot.forEach(snap => {
+      const data = snap.val();
+      const id = snap.key;
+
+      if (!data || !data.title) return;
+
+      // 🔒 参加済みだけ表示
+      if (!data.members || !data.members[currentUser.uid]) return;
+
+      const div = document.createElement("div");
+      div.style.borderTop = "1px solid #ccc";
+      div.style.padding = "10px";
+
+      div.innerHTML = `
+        <div style="font-size:22px; font-weight:bold;">
+          ${data.title}
+        </div>
+
+        <button onclick="openThread('${id}')" style="
+          margin-top:5px;
+          padding:5px 10px;
+          background:#4CAF50;
+          color:white;
+          border:none;
+          border-radius:5px;
+          cursor:pointer;
+        ">
+          参加
+        </button>
+      `;
+
+      threadsDiv.appendChild(div);
+    });
+  });
+}
 </script>
 
 </body>
