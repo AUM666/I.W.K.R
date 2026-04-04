@@ -114,35 +114,6 @@ function createThread() {
   document.getElementById("titleInput").value = "";
 }
 
-// スレ一覧
-db.ref("threads").on("value", snapshot => {
-  const threadsDiv = document.getElementById("threads");
-  threadsDiv.innerHTML = "";
-
-  snapshot.forEach(snap => {
-    const data = snap.val();
-    const id = snap.key;
-
-    if (!data || !data.title) return;
-
-    // 🔒 メンバーのみ表示
-    if (!data.members || !data.members[currentUser.uid]) return;
-
-    const div = document.createElement("div");
-    div.style.border = "1px solid #ccc";
-    div.style.margin = "5px";
-    div.style.padding = "5px";
-
-    div.innerHTML = `
-      <b>${data.title}</b><br>
-      作成者: ${data.ownerName || "名無し"}<br>
-      <button onclick="openThread('${id}')">開く</button>
-    `;
-
-    threadsDiv.prepend(div);
-  });
-});
-
 function openThread(id) {
   location.href = "thread.html?id=" + id;
 }
@@ -177,34 +148,7 @@ function joinByCode() {
 
   });
 }
-  function loadThreads() {
-  db.ref("threads").on("value", snapshot => {
-    const threadsDiv = document.getElementById("threads");
-    threadsDiv.innerHTML = "";
-
-    snapshot.forEach(snap => {
-      const data = snap.val();
-      const id = snap.key;
-
-      if (!data || !data.title) return;
-
-      if (!data.members || !data.members[currentUser.uid]) return;
-
-      const div = document.createElement("div");
-      div.style.border = "1px solid #ccc";
-      div.style.margin = "5px";
-      div.style.padding = "5px";
-
-      div.innerHTML = `
-        <b>${data.title}</b><br>
-        <button onclick="openThread('${id}')">開く</button>
-      `;
-
-      threadsDiv.prepend(div);
-    });
-  });
-}
-  function loadThreads() {
+function loadThreads() {
   db.ref("threads").on("value", snapshot => {
     const threadsDiv = document.getElementById("threads");
     threadsDiv.innerHTML = "";
